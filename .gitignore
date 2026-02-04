@@ -1,0 +1,17 @@
+# Zsh completion cache
+.zcompdump*
+
+# Plugins (managed by zinit)
+plugins/
+
+# Local customizations (user-specific)
+# Uncomment if you don't want to share your local settings
+# zsh-local
+
+# Backup files
+*.bak
+*~
+
+# OS-specific
+.DS_Store
+Thumbs.db

@@ -1,0 +1,146 @@
+# All other misc crap goes here.
+
+# Preferred editor for local and remote sessions
+export EDITOR=nvim
+
+# Compilation flags
+# export ARCHFLAGS="-arch x86_64"
+
+# Set personal aliases, overriding those provided by oh-my-zsh libs,
+# plugins, and themes. Aliases can be placed here, though oh-my-zsh
+# users are encouraged to define aliases within the ZSH_CUSTOM folder.
+# For a full list of active aliases, run `alias`.
+
+export PATH=$PATH:~/bin:~/.config/emacs/bin
+
+if [[ -e ~/bin/aliases.sh ]]; then
+    source ~/bin/aliases.sh
+fi
+
+if [[ "$TERM" == "dumb" ]]; then
+    unset zle_bracketed_paste
+    unset zle
+    PS1='$ '
+    return
+fi
+
+if [[ "$TERM" == "xterm-kitty" ]]; then
+  alias ssh='kitty +kitten ssh'
+fi
+
+  reload_gtk() {
+  theme=$(gsettings get org.gnome.desktop.interface gtk-theme)
+  gsettings set org.gnome.desktop.interface gtk-theme ''
+  sleep 1
+  gsettings set org.gnome.desktop.interface gtk-theme $theme
+}
+
+
+
+alias config='git --git-dir=$HOME/.cfg/ --work-tree=$HOME'
+
+# KVM
+export VIRSH_DEFAULT_CONNECT_URI=qemu:///system
+export LIBVIRT_DEFAULT_URI=qemu:///system
+
+# added by pipsi (https://github.com/mitsuhiko/pipsi)
+export PATH="$HOME/.local/bin:$PATH"
+
+# Cargo
+export PATH="$HOME/.cargo/bin:$PATH"
+
+# NPM
+export PATH="$HOME/node_modules/.bin:$PATH"
+
+# Go
+export GOPATH=$HOME/go
+export PATH=$PATH:$GOPATH/bin
+
+# Gem
+if command -v ruby > /dev/null 2>&1; then
+    GEM_USER_DIR=$(ruby -e 'puts Gem.user_dir' 2>/dev/null)
+    [ -n "$GEM_USER_DIR" ] && PATH="$PATH:$GEM_USER_DIR/bin"
+fi
+
+# xterm transparency
+if [ -v XTERM_VERSION ]
+then
+    if hash transset-df 2> /dev/null
+    then
+        transset-df --id "$WINDOWID" 0.75 > /dev/null
+    elif hash transset 2> /dev/null
+    then
+        transset --id "$WINDOWID" 0.75 > /dev/null
+    fi
+fi
+
+if [[ "$TERM" == "xterm-termite" ]]; then
+    export TERM=xterm-256color
+fi
+
+# add additional search paths to vim.
+VIM_EXTPATHS="$HOME/.vim.extpaths"
+if [ ! -e "$VIM_EXTPATHS" ] || [ "/usr/bin/cpp" -nt "$VIM_EXTPATHS" ]; then
+    echo | cpp -v 2>&1 | \
+    awk '/^#include </ { state=1 } /End of search list/ { state=0 } /^ / && state { print "set path+=" substr($0, 2) "/**2" }' > $VIM_EXTPATHS
+fi
+
+unset SSH_AGENT_PID
+if [ "${gnupg_SSH_AUTH_SOCK_by:-0}" -ne $$ ]; then
+    export SSH_AUTH_SOCK="$(gpgconf --list-dirs agent-ssh-socket)"
+fi
+command -v gpg-connect-agent > /dev/null 2>&1 && \
+    echo UPDATESTARTUPTTY | gpg-connect-agent > /dev/null 2>&1
+
+# Defer non-critical startup commands
+if [[ ! -e ~/.noauto ]]; then
+    if [ -z ${SSH_TTY} ]; then
+        if command -v wallust > /dev/null 2>&1 && [ -f ~/.wallpaper ]; then
+            (wallust run -u -q "$(cat ~/.wallpaper)" &)
+        fi
+    fi
+fi
+
+if command -v fortune > /dev/null 2>&1; then
+    fortune -o
+fi
+
+case $TERM in
+    (*xterm* | rxvt | rxvt-unicode-256color)
+        function precmd {
+            print -Pn "\e]0;%(1j,%j job%(2j|s|); ,)%~\a"
+        }
+        function preexec {
+            printf "\033]0;%s\a" "$1"
+        }
+    ;;
+esac
+
+# Conditionally load mise
+command -v mise > /dev/null 2>&1 && eval "$(mise activate zsh)"
+
+# Conditionally load carapace
+command -v carapace > /dev/null 2>&1 && source <(carapace _carapace zsh)
+
+# Conditionally load starship (overrides custom prompt from zsh-prompt)
+command -v starship > /dev/null 2>&1 && eval "$(starship init zsh)"
+
+if command -v keychain > /dev/null 2>&1; then
+    # Find all SSH private keys (exclude .pub, known_hosts, config, etc.)
+    SSH_KEYS=()
+    for key in "$HOME"/.ssh/id_*; do
+        # Only add if it exists, is a file, and is not a .pub file
+        if [[ -f "$key" && "$key" != *.pub ]]; then
+            SSH_KEYS+=("$key")
+        fi
+    done
+    
+    # Load all found keys into keychain
+    if [[ ${#SSH_KEYS[@]} -gt 0 ]]; then
+        keychain -q "${SSH_KEYS[@]}"
+    fi
+fi
+
+if [[ -e "$HOME/.keychain/$HOSTNAME-sh" ]]; then
+    source "$HOME/.keychain/$HOSTNAME-sh"
+fi
