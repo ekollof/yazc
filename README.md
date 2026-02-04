@@ -66,6 +66,12 @@ Uses [zinit](https://github.com/zdharma-continuum/zinit) for fast, efficient plu
 - **zsh-autopair** - Auto-close brackets, quotes, etc.
 - **zsh-fzf-history-search** - Enhanced history search with FZF
 - **fzf-tab** - FZF-powered tab completion
+- **zsh-completions** - Additional completion definitions (1000+ commands)
+- **fast-syntax-highlighting** - Real-time syntax highlighting
+- **zsh-you-should-use** - Reminds you of existing aliases
+- **git** (OMZ) - Git aliases and functions
+- **sudo** (OMZ) - Press ESC ESC to add sudo to command
+- **extract** (OMZ) - Universal archive extractor
 
 Zinit auto-installs on first launch to `~/.local/share/zinit/`.
 
@@ -173,6 +179,15 @@ zinit self-update        # Update zinit itself
 - `<` / `>` - Switch between completion groups
 - `Ctrl+/` - Toggle preview window
 
+### sudo Plugin
+- `ESC ESC` - Prepend sudo to current or previous command
+
+### Syntax Highlighting
+Commands are highlighted as you type:
+- **Green** - Valid command
+- **Red** - Invalid/not found
+- **Blue** - Builtin command
+
 ## Performance
 
 ### Fast Startup Optimizations
@@ -206,7 +221,8 @@ exec zsh
 - fortune - Random quotes on startup
 - **chafa** - Image previews in terminal (sixel support)
 - **viu** - Alternative image viewer
-- **kitty** - Terminal with graphics protocol support for image previews
+- **kitty/ghostty** - Terminal with graphics protocol support for image previews
+- **zoxide** - Smarter directory jumping (better than cd)
 
 ## Troubleshooting
 

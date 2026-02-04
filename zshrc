@@ -62,6 +62,17 @@ zinit light zsh-users/zsh-autosuggestions
 zinit light hlissner/zsh-autopair
 zinit light joshskidmore/zsh-fzf-history-search
 
+# Additional completions
+zinit light zsh-users/zsh-completions
+
+# Useful OMZ plugins
+zinit snippet OMZP::git
+zinit snippet OMZP::sudo
+zinit snippet OMZP::extract
+
+# Alias reminder
+zinit light MichaelAquilina/zsh-you-should-use
+
 # FZF must be loaded before fzf-tab 
 [ -f /usr/share/fzf/completion.zsh ] && source /usr/share/fzf/completion.zsh
 [ -f /usr/share/fzf/key-bindings.zsh ] && source /usr/share/fzf/key-bindings.zsh
@@ -180,6 +191,9 @@ zstyle ':fzf-tab:complete:*:*' fzf-preview '
 zstyle ':fzf-tab:*' fzf-flags --preview-window=right:50%:wrap --height=40%
 # Switch between groups with < and >
 zstyle ':fzf-tab:*' switch-group '<' '>'
+
+# Syntax highlighting - MUST be loaded last for compatibility
+zinit light zdharma-continuum/fast-syntax-highlighting
 
 source "$ZDOTDIR/zsh-local"
 

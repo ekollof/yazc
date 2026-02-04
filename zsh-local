@@ -125,6 +125,9 @@ command -v carapace > /dev/null 2>&1 && source <(carapace _carapace zsh)
 # Conditionally load starship (overrides custom prompt from zsh-prompt)
 command -v starship > /dev/null 2>&1 && eval "$(starship init zsh)"
 
+# Conditionally load zoxide (smarter cd)
+command -v zoxide > /dev/null 2>&1 && eval "$(zoxide init zsh)"
+
 if command -v keychain > /dev/null 2>&1; then
     # Find all SSH private keys (exclude .pub, known_hosts, config, etc.)
     SSH_KEYS=()
