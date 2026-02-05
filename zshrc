@@ -158,12 +158,14 @@ zstyle ':fzf-tab:complete:*:*' fzf-preview '
     local mime=$(file --brief --mime-type "$file" 2>/dev/null)
     case $mime in
       image/*)
-        # fzf 0.43+ has native support for kitty graphics protocol
-        # ghostty and kitty both support this
+        # Detect sixel support and use appropriate method
         if [[ "$TERM_PROGRAM" == "ghostty" ]] || [[ "$TERM" == "xterm-kitty" ]]; then
+          # Kitty graphics protocol
           kitty icat --clear --transfer-mode=memory --stdin=no "$file"
         elif command -v chafa > /dev/null 2>&1; then
-          chafa -f sixel "$file"
+          # Use sixel for terminals that support it (st, xterm, mlterm, etc)
+          # Works in tmux 3.4+ with allow-passthrough and terminal-features configured
+          chafa -f sixel -s "${FZF_PREVIEW_COLUMNS:-80}x${FZF_PREVIEW_LINES:-24}" --animate=off "$file"
         else
           echo "Image: $file"
           file --brief "$file"
