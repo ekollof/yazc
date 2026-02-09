@@ -96,7 +96,7 @@ command -v gpg-connect-agent > /dev/null 2>&1 && \
 if [[ ! -e ~/.noauto ]]; then
     if [ -z ${SSH_TTY} ]; then
         if command -v wallust > /dev/null 2>&1 && [ -f ~/.wallpaper ]; then
-            (wallust run -u -q "$(cat ~/.wallpaper)" &)
+            (wallust run -u -q "$(/bin/cat ~/.wallpaper)" &)
         fi
     fi
 fi
@@ -116,10 +116,10 @@ case $TERM in
     ;;
 esac
 
-# Conditionally load mise
+# Conditionally load mise (must load before carapace so tools are in PATH)
 command -v mise > /dev/null 2>&1 && eval "$(mise activate zsh)"
 
-# Conditionally load carapace
+# Conditionally load carapace (after mise so it can find mise-installed tools)
 command -v carapace > /dev/null 2>&1 && source <(carapace _carapace zsh)
 
 # Conditionally load starship (overrides custom prompt from zsh-prompt)

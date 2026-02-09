@@ -104,7 +104,7 @@ command -v fd > /dev/null 2>&1 && export FZF_DEFAULT_COMMAND='fd --type f --hidd
 # CTRL-T: Paste selected files/dirs
 export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
 export FZF_CTRL_T_OPTS="
-  --preview 'bat --color=always --style=numbers --line-range=:500 {} 2> /dev/null || cat {} 2> /dev/null || tree -C {}'
+  --preview '(bat --color=always --style=numbers --line-range=:500 {} 2> /dev/null || cat {} 2> /dev/null || tree -C {} 2> /dev/null) 2> /dev/null'
   --preview-window right:50%:wrap
 "
 
