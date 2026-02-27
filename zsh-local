@@ -123,7 +123,33 @@ command -v mise > /dev/null 2>&1 && eval "$(mise activate zsh)"
 command -v carapace > /dev/null 2>&1 && source <(carapace _carapace zsh)
 
 # Conditionally load starship (overrides custom prompt from zsh-prompt)
-command -v starship > /dev/null 2>&1 && eval "$(starship init zsh)"
+# Skip starship on terminals that lack 256-color or truecolor support.
+# CDE's dtterm reports $TERM=dtterm and tput colors=8 with no COLORTERM.
+# Modern terminals (alacritty, ghostty, st, kitty) set COLORTERM=truecolor.
+_term_has_starship_support() {
+  # Reject explicitly known limited terminals
+  case "$TERM" in
+    dtterm|cde*|dumb|vt[0-9]*)
+      return 1
+      ;;
+  esac
+
+  # Require at least 256 colors (dtterm/xterm report 8)
+  local ncolors
+  ncolors=$(tput colors 2>/dev/null) || return 1
+  (( ncolors >= 256 )) || return 1
+
+  # Require truecolor declaration — set by capable terminals regardless of
+  # locale. dtterm and similar do not set this variable.
+  [[ "$COLORTERM" == (truecolor|24bit) ]] || return 1
+
+  return 0
+}
+
+if command -v starship > /dev/null 2>&1 && _term_has_starship_support; then
+  eval "$(starship init zsh)"
+fi
+unfunction _term_has_starship_support
 
 # Conditionally load zoxide (smarter cd)
 command -v zoxide > /dev/null 2>&1 && eval "$(zoxide init zsh)"
@@ -140,7 +166,7 @@ if command -v keychain > /dev/null 2>&1; then
     
     # Load all found keys into keychain
     if [[ ${#SSH_KEYS[@]} -gt 0 ]]; then
-        keychain -q "${SSH_KEYS[@]}"
+        keychain --ssh-allow-gpg -q "${SSH_KEYS[@]}"
     fi
 fi
 
