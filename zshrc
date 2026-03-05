@@ -1,8 +1,8 @@
 #!/bin/zsh
 export ZDOTDIR=$HOME/.config/zsh
 
-HISTSIZE=5000
-SAVEHIST=5000
+HISTSIZE=100000
+SAVEHIST=100000
 HISTFILE=~/.zsh_history
 setopt appendhistory
 setopt sharehistory
@@ -46,6 +46,17 @@ bindkey "^N" down-line-or-beginning-search
 
 # Colors
 autoload -Uz colors && colors
+
+# bat as MANPAGER (syntax-highlighted man pages) and LESSOPEN pipe
+if command -v bat > /dev/null 2>&1; then
+  export MANPAGER='sh -c "col -bx | bat -l man -p"'
+  export MANROFFOPT='-c'
+  export LESSOPEN='|bat --color=always --style=plain %s'
+  export LESS='-R'
+fi
+
+# zsh-you-should-use: show alias reminder before the command runs
+export YSU_MESSAGE_POSITION="before"
 
 source "$ZDOTDIR/zsh-prompt"
 
@@ -96,6 +107,12 @@ zinit light zsh-users/zsh-autosuggestions
 zinit light hlissner/zsh-autopair
 zinit light joshskidmore/zsh-fzf-history-search
 
+# vi mode with proper plugin (restores sane keybindings; must load before bindkey calls)
+zinit light jeffreytse/zsh-vi-mode
+
+# Multi-word history search (Ctrl-R fallback when not using fzf)
+zinit light zdharma-continuum/history-search-multi-word
+
 # Additional completions
 zinit light zsh-users/zsh-completions
 
@@ -106,6 +123,12 @@ zinit snippet OMZP::extract
 
 # Alias reminder
 zinit light MichaelAquilina/zsh-you-should-use
+
+# zsh-autosuggestions: ctrl-f accepts next word, End accepts full suggestion
+ZSH_AUTOSUGGEST_ACCEPT_WIDGETS=(end-of-line vi-end-of-line)
+ZSH_AUTOSUGGEST_PARTIAL_ACCEPT_WIDGETS=(forward-word vi-forward-word vi-forward-word-end vi-forward-blank-word vi-forward-blank-word-end forward-char vi-forward-char)
+bindkey '^f' forward-word          # Ctrl-F: accept one word of suggestion
+bindkey '^e' autosuggest-accept    # Ctrl-E: accept full suggestion
 
 # FZF must be loaded before fzf-tab 
 [ -f /usr/share/fzf/completion.zsh ] && source /usr/share/fzf/completion.zsh
@@ -145,7 +168,7 @@ export FZF_CTRL_T_OPTS="
 # ALT-C: cd into selected directory
 command -v fd > /dev/null 2>&1 && export FZF_ALT_C_COMMAND='fd --type d --hidden --follow --exclude .git'
 export FZF_ALT_C_OPTS="
-  --preview 'tree -C {} | head -200'
+  --preview 'eza --tree --color=always --icons {} 2>/dev/null || tree -C {} | head -200'
   --preview-window right:50%:wrap
 "
 
