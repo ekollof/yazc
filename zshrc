@@ -259,9 +259,16 @@ zstyle ':fzf-tab:*' fzf-bindings 'right:execute-silent(echo {+})+abort'
 zstyle ':fzf-tab:*' accept-line enter
 # Enhanced preview with image support
 zstyle ':fzf-tab:complete:*:*' fzf-preview '
-  local file=${(Q)word}
-  file=${file## }
-  file=${file%% }
+  # fzf-tab sets $realpath = realdir + word for file completions (absolute path)
+  # Fall back to $word (stripped) for non-file completions
+  local file
+  if [[ -n $realpath ]]; then
+    file=$realpath
+  else
+    file=${(Q)word}
+    file=${file## }
+    file=${file%% }
+  fi
   
   if [[ -f $file ]]; then
     local mime=$(file --brief --mime-type "$file" 2>/dev/null)
