@@ -124,11 +124,11 @@ zinit snippet OMZP::extract
 # Alias reminder
 zinit light MichaelAquilina/zsh-you-should-use
 
-# zsh-autosuggestions: ctrl-f accepts next word, End accepts full suggestion
-ZSH_AUTOSUGGEST_ACCEPT_WIDGETS=(end-of-line vi-end-of-line)
+# zsh-autosuggestions: Ctrl-F and End both accept the full suggestion
+ZSH_AUTOSUGGEST_ACCEPT_WIDGETS=(end-of-line vi-end-of-line autosuggest-accept)
 ZSH_AUTOSUGGEST_PARTIAL_ACCEPT_WIDGETS=(forward-word vi-forward-word vi-forward-word-end vi-forward-blank-word vi-forward-blank-word-end forward-char vi-forward-char)
-bindkey '^f' forward-word          # Ctrl-F: accept one word of suggestion
-bindkey '^e' autosuggest-accept    # Ctrl-E: accept full suggestion
+bindkey '^f' autosuggest-accept    # Ctrl-F: accept full suggestion
+bindkey '^e' end-of-line           # Ctrl-E: move to end of line (standard)
 
 # FZF must be loaded before fzf-tab 
 [ -f /usr/share/fzf/completion.zsh ] && source /usr/share/fzf/completion.zsh
