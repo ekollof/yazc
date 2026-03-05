@@ -211,9 +211,9 @@ zstyle ':fzf-tab:complete:*:*' fzf-preview '
     case $mime in
       image/*)
         # Detect sixel support and use appropriate method
-        if [[ "$TERM_PROGRAM" == "ghostty" ]] || [[ "$TERM" == "xterm-kitty" ]]; then
-          # Kitty graphics protocol
-          kitty icat --clear --transfer-mode=memory --stdin=no "$file"
+        if [[ -n "$KITTY_WINDOW_ID" ]]; then
+          # Kitty graphics protocol (most reliable: KITTY_WINDOW_ID is only set inside kitty)
+          kitten icat --clear --transfer-mode=memory --stdin=no "$file"
         elif command -v chafa > /dev/null 2>&1; then
           # Use sixel for terminals that support it (st, xterm, mlterm, etc)
           # Works in tmux 3.4+ with allow-passthrough and terminal-features configured

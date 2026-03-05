@@ -24,8 +24,29 @@ if [[ "$TERM" == "dumb" ]]; then
     return
 fi
 
-if [[ "$TERM" == "xterm-kitty" ]]; then
-  alias ssh='kitty +kitten ssh'
+if [[ -n "$KITTY_WINDOW_ID" ]]; then
+  # Load kitty shell integration (marks, OSC title, cursor shape, etc.)
+  # KITTY_INSTALLATION_DIR is set by kitty in the environment
+  if [[ -n "$KITTY_INSTALLATION_DIR" ]]; then
+    autoload -Uz -- "$KITTY_INSTALLATION_DIR/shell-integration/zsh/kitty-integration"
+    kitty-integration
+    unfunction kitty-integration
+  fi
+
+  # Use the kitten SSH wrapper so terminfo and features carry over to remote hosts
+  alias ssh='kitten ssh'
+
+  # Side-by-side diff with syntax highlighting
+  alias diff='kitten diff'
+
+  # Clipboard access (works locally and over SSH via kitten)
+  alias pbcopy='kitten clipboard'
+  alias pbpaste='kitten clipboard --get-clipboard'
+
+  # Hyperlinked ripgrep — file paths in output become clickable OSC 8 links
+  if command -v rg > /dev/null 2>&1; then
+    alias rg='kitten hyperlinked_grep'
+  fi
 fi
 
   reload_gtk() {
@@ -107,12 +128,15 @@ fi
 
 case $TERM in
     (*xterm* | rxvt | rxvt-unicode-256color)
-        function precmd {
-            print -Pn "\e]0;%(1j,%j job%(2j|s|); ,)%~\a"
-        }
-        function preexec {
-            printf "\033]0;%s\a" "$1"
-        }
+        # Skip for kitty: shell integration handles titles via OSC natively
+        if [[ -z "$KITTY_WINDOW_ID" ]]; then
+            function precmd {
+                print -Pn "\e]0;%(1j,%j job%(2j|s|); ,)%~\a"
+            }
+            function preexec {
+                printf "\033]0;%s\a" "$1"
+            }
+        fi
     ;;
 esac
 
