@@ -267,19 +267,15 @@ zstyle ':fzf-tab:complete:*:*' fzf-preview '
     local mime=$(file --brief --mime-type "$file" 2>/dev/null)
     case $mime in
       image/*)
-        # Detect sixel support and use appropriate method
-        if [[ -n "$KITTY_WINDOW_ID" ]]; then
-          # Use unicode-placeholder mode so icat works inside fzf preview panes
-          # (fzf subprocesses have no /dev/tty; unicode-placeholder renders via
-          # regular terminal output and does not require the kitty graphics protocol
-          # handshake over the TTY).
-          kitten icat --unicode-placeholder --stdin=no \
-            --place "${FZF_PREVIEW_COLUMNS:-80}x${FZF_PREVIEW_LINES:-24}@0x0" \
-            "$file"
-        elif command -v chafa > /dev/null 2>&1; then
-          # Use sixel for terminals that support it (st, xterm, mlterm, etc)
-          # Works in tmux 3.4+ with allow-passthrough and terminal-features configured
-          chafa -f sixel -s "${FZF_PREVIEW_COLUMNS:-80}x${FZF_PREVIEW_LINES:-24}" --animate=off "$file"
+        if command -v chafa > /dev/null 2>&1; then
+          if [[ -n "$KITTY_WINDOW_ID" ]]; then
+            # kitty graphics protocol via chafa: writes escape codes directly to
+            # stdout, no /dev/tty handshake needed (works inside fzf preview panes)
+            chafa -f kitty -s "${FZF_PREVIEW_COLUMNS:-80}x${FZF_PREVIEW_LINES:-24}" --animate=off "$file"
+          else
+            # Sixel fallback for other terminals (xterm, mlterm, etc.)
+            chafa -f sixel -s "${FZF_PREVIEW_COLUMNS:-80}x${FZF_PREVIEW_LINES:-24}" --animate=off "$file"
+          fi
         else
           echo "Image: $file"
           file --brief "$file"
