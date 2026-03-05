@@ -57,6 +57,40 @@ if [ ! -d "$ZINIT_HOME" ]; then
 fi
 source "${ZINIT_HOME}/zinit.zsh"
 
+# Check for zinit updates once per day (non-blocking background fetch)
+# A stamp file tracks the last check; prompt fires once on the next precmd.
+() {
+  local stamp="${XDG_CACHE_HOME:-$HOME/.cache}/zinit/update-check.stamp"
+  local flag="${XDG_CACHE_HOME:-$HOME/.cache}/zinit/update-available"
+  command mkdir -p "${stamp:h}"
+  # Only fetch if the stamp is older than 24 hours
+  if [[ ! -f $stamp ]] || [[ -n $stamp(#qN.mh+24) ]]; then
+    (
+      command git -C "$ZINIT_HOME" fetch --quiet 2>/dev/null
+      local count
+      count=$(command git -C "$ZINIT_HOME" rev-list --right-only --count HEAD...@'{u}' 2>/dev/null)
+      if [[ $count -gt 0 ]]; then
+        command touch "$flag"
+      else
+        command rm -f "$flag"
+      fi
+      command touch "$stamp"
+    ) &!
+  fi
+  # If a previous check left the flag, prompt once at first interactive prompt
+  if [[ -f $flag ]]; then
+    _zinit_update_precmd() {
+      # Remove this hook immediately so it only fires once per session
+      add-zsh-hook -d precmd _zinit_update_precmd
+      unfunction _zinit_update_precmd
+      print -P "\n%F{yellow}[zinit]%f updates available. Run %F{cyan}zinit self-update%f to apply."
+      print -P "        Run %F{cyan}zinit update --all%f to also update plugins.\n"
+    }
+    autoload -Uz add-zsh-hook
+    add-zsh-hook precmd _zinit_update_precmd
+  fi
+}
+
 # Load plugins with zinit
 zinit light zsh-users/zsh-autosuggestions
 zinit light hlissner/zsh-autopair
