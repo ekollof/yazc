@@ -269,8 +269,13 @@ zstyle ':fzf-tab:complete:*:*' fzf-preview '
       image/*)
         # Detect sixel support and use appropriate method
         if [[ -n "$KITTY_WINDOW_ID" ]]; then
-          # Kitty graphics protocol (most reliable: KITTY_WINDOW_ID is only set inside kitty)
-          kitten icat --clear --transfer-mode=memory --stdin=no "$file"
+          # Use unicode-placeholder mode so icat works inside fzf preview panes
+          # (fzf subprocesses have no /dev/tty; unicode-placeholder renders via
+          # regular terminal output and does not require the kitty graphics protocol
+          # handshake over the TTY).
+          kitten icat --unicode-placeholder --stdin=no \
+            --place "${FZF_PREVIEW_COLUMNS:-80}x${FZF_PREVIEW_LINES:-24}@0x0" \
+            "$file"
         elif command -v chafa > /dev/null 2>&1; then
           # Use sixel for terminals that support it (st, xterm, mlterm, etc)
           # Works in tmux 3.4+ with allow-passthrough and terminal-features configured
