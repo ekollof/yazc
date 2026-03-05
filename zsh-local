@@ -117,13 +117,16 @@ command -v gpg-connect-agent > /dev/null 2>&1 && \
 if [[ ! -e ~/.noauto ]]; then
     if [ -z ${SSH_TTY} ]; then
         if command -v wallust > /dev/null 2>&1 && [ -f ~/.wallpaper ]; then
-            # Only re-apply if the wallpaper file changed since last run
+            local _wseq="${XDG_CACHE_HOME:-$HOME/.cache}/wallust/sequences"
             local _wstamp="${XDG_CACHE_HOME:-$HOME/.cache}/wallust/applied.stamp"
             command mkdir -p "${_wstamp:h}"
+            # Re-generate theme only when wallpaper changes
             if [[ ! -f $_wstamp ]] || [[ ~/.wallpaper -nt $_wstamp ]]; then
                 (wallust run -u -q "$(<~/.wallpaper)" && touch "$_wstamp" &)
             fi
-            unset _wstamp
+            # Always replay colour sequences into every new terminal window
+            [[ -f $_wseq ]] && command cat "$_wseq"
+            unset _wstamp _wseq
         fi
     fi
 fi
