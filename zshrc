@@ -122,6 +122,56 @@ export FZF_CTRL_R_OPTS="
   --bind 'ctrl-y:execute-silent(echo -n {2..} | xclip -selection clipboard)+abort'
 "
 
+# Override zsh-fzf-history-search to never pre-fill the fzf query with $BUFFER
+fzf_history_search() {
+  setopt extendedglob
+
+  FC_ARGS="-l"
+  CANDIDATE_LEADING_FIELDS=2
+
+  if (( ! $ZSH_FZF_HISTORY_SEARCH_EVENT_NUMBERS )); then
+    FC_ARGS+=" -n"
+    ((CANDIDATE_LEADING_FIELDS--))
+  fi
+
+  if (( $ZSH_FZF_HISTORY_SEARCH_DATES_IN_SEARCH )); then
+    FC_ARGS+=" -i"
+    ((CANDIDATE_LEADING_FIELDS+=2))
+  fi
+
+  local history_cmd="fc ${=FC_ARGS} -1 0"
+
+  if [ -n "${ZSH_FZF_HISTORY_SEARCH_REMOVE_DUPLICATES}" ]; then
+    if (( $+commands[awk] )); then
+      history_cmd="$history_cmd | awk '!seen[\$0]++'"
+    else
+      history_cmd="$history_cmd | uniq"
+    fi
+  fi
+
+  # Always start fzf with an empty query (ignore $BUFFER)
+  candidates=(${(f)"$(eval $history_cmd | fzf ${=ZSH_FZF_HISTORY_SEARCH_FZF_ARGS} ${=ZSH_FZF_HISTORY_SEARCH_FZF_EXTRA_ARGS})"})
+
+  local ret=$?
+  if [ -n "$candidates" ]; then
+    if (( $CANDIDATE_LEADING_FIELDS != 1 )); then
+      BUFFER="${candidates[@]/(#m)[0-9 \-\:\*]##/$(
+      printf '%s' "${${(As: :)MATCH}[${CANDIDATE_LEADING_FIELDS},-1]}" | sed 's/%/%%/g'
+      )}"
+    else
+      BUFFER="${(j| && |)candidates}"
+    fi
+    zle vi-fetch-history -n $BUFFER
+    if [ -n "${ZSH_FZF_HISTORY_SEARCH_END_OF_LINE}" ]; then
+      zle end-of-line
+    fi
+  fi
+
+  zle reset-prompt
+  return $ret
+}
+zle -N fzf_history_search
+
 # Run compinit once after all fpath modifications
 # Use cached dump file (re-generate once per day)
 if [[ -n ${ZDOTDIR}/.zcompdump(#qN.mh+24) ]]; then
@@ -136,6 +186,8 @@ zinit light Aloxaf/fzf-tab
 # fzf-tab configuration (must be set after fzf-tab is loaded)
 # Make fzf-tab NOT follow FZF_DEFAULT_OPTS to avoid conflicts
 zstyle ':fzf-tab:*' use-fzf-default-opts no
+# Don't pre-fill fzf query with typed input or common prefix — always start empty
+zstyle ':fzf-tab:*' query-string ''
 # Disable sort for git checkout
 zstyle ':completion:*:git-checkout:*' sort false
 # Set descriptions format to enable group support

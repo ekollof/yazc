@@ -166,7 +166,7 @@ if command -v keychain > /dev/null 2>&1; then
     
     # Load all found keys into keychain
     if [[ ${#SSH_KEYS[@]} -gt 0 ]]; then
-        keychain --ssh-allow-gpg -q "${SSH_KEYS[@]}"
+        keychain --inherit any -q "${SSH_KEYS[@]}"
     fi
 fi
 
