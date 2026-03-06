@@ -68,38 +68,40 @@ if [ ! -d "$ZINIT_HOME" ]; then
 fi
 source "${ZINIT_HOME}/zinit.zsh"
 
-# Check for zinit updates once per day (non-blocking background fetch)
-# A stamp file tracks the last check; prompt fires once on the next precmd.
+# Check for zinit updates once per day (non-blocking background fetch).
+# The stamp file stores the pending upstream commit count (0 = up to date).
+# Running zinit-update removes the stamp so the next shell re-checks immediately.
 () {
   local stamp="${XDG_CACHE_HOME:-$HOME/.cache}/zinit/update-check.stamp"
-  local flag="${XDG_CACHE_HOME:-$HOME/.cache}/zinit/update-available"
   command mkdir -p "${stamp:h}"
-  # Only fetch if the stamp is older than 24 hours
+  # Kick off a background fetch if the stamp is older than 24 hours or missing
   if [[ ! -f $stamp ]] || [[ -n $stamp(#qN.mh+24) ]]; then
     (
       command git -C "$ZINIT_HOME" fetch --quiet 2>/dev/null
       local count
       count=$(command git -C "$ZINIT_HOME" rev-list --right-only --count HEAD...@'{u}' 2>/dev/null)
-      if [[ $count -gt 0 ]]; then
-        command touch "$flag"
-      else
-        command rm -f "$flag"
-      fi
-      command touch "$stamp"
+      printf '%s' "${count:-0}" >| "$stamp"
     ) &!
   fi
-  # If a previous check left the flag, prompt once at first interactive prompt
-  if [[ -f $flag ]]; then
+  # Read the count written by the last background fetch
+  local pending=0
+  [[ -f $stamp ]] && pending=$(<"$stamp")
+  if (( pending > 0 )); then
     _zinit_update_precmd() {
-      # Remove this hook immediately so it only fires once per session
       add-zsh-hook -d precmd _zinit_update_precmd
       unfunction _zinit_update_precmd
-      print -P "\n%F{yellow}[zinit]%f updates available. Run %F{cyan}zinit self-update%f to apply."
-      print -P "        Run %F{cyan}zinit update --all%f to also update plugins.\n"
+      print -P "\n%F{yellow}[zinit]%f updates available. Run %F{cyan}zinit-update%f to apply.\n"
     }
     autoload -Uz add-zsh-hook
     add-zsh-hook precmd _zinit_update_precmd
   fi
+}
+
+# Wrapper that updates zinit + plugins and resets the update-check stamp
+zinit-update() {
+  zinit self-update && zinit update --all
+  command rm -f "${XDG_CACHE_HOME:-$HOME/.cache}/zinit/update-check.stamp"
+  print -P "\n%F{green}[zinit]%f up to date. Stamp reset — next shell will re-check.\n"
 }
 
 # Load plugins with zinit
