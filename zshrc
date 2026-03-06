@@ -112,6 +112,9 @@ zinit-update() {
   fi
   command rm -f "${XDG_CACHE_HOME:-$HOME/.cache}/zinit/update-check.stamp"
   print -P "\n%F{green}[zinit]%f up to date. Stamp reset — next shell will re-check.\n"
+  # Disown any background jobs zinit may have left behind, so ^D exits
+  # immediately instead of waiting a few seconds for them to finish.
+  disown %% 2>/dev/null; disown -a 2>/dev/null
   return $ret
 }
 
