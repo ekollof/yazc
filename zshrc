@@ -124,7 +124,11 @@ zinit light hlissner/zsh-autopair
 zinit light joshskidmore/zsh-fzf-history-search
 
 # vi mode with proper plugin (restores sane keybindings; must load before bindkey calls)
-zinit light jeffreytse/zsh-vi-mode
+# zsh-vi-mode uses cursor-shape escape sequences that render as garbage on
+# terminals without truecolor support (e.g. CDE's dtterm).
+if [[ "$COLORTERM" == (truecolor|24bit) ]]; then
+  zinit light jeffreytse/zsh-vi-mode
+fi
 
 # Multi-word history search (Ctrl-R fallback when not using fzf)
 zinit light zdharma-continuum/history-search-multi-word
