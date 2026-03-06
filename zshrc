@@ -97,11 +97,22 @@ source "${ZINIT_HOME}/zinit.zsh"
   fi
 }
 
-# Wrapper that updates zinit + plugins and resets the update-check stamp
+# Wrapper that updates zinit + plugins and resets the update-check stamp.
+# stty settings (especially eof=^D) can get clobbered by git subprocesses
+# spawned during the update; save and restore them around the operation.
 zinit-update() {
+  local stty_save
+  stty_save=$(stty -g 2>/dev/null)
   zinit self-update && zinit update --all
+  local ret=$?
+  if [[ -n $stty_save ]]; then
+    stty "$stty_save" 2>/dev/null
+  else
+    stty eof "^D" 2>/dev/null
+  fi
   command rm -f "${XDG_CACHE_HOME:-$HOME/.cache}/zinit/update-check.stamp"
   print -P "\n%F{green}[zinit]%f up to date. Stamp reset — next shell will re-check.\n"
+  return $ret
 }
 
 # Load plugins with zinit
