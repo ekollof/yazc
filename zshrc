@@ -69,8 +69,9 @@ fi
 source "${ZINIT_HOME}/zinit.zsh"
 
 # Check for zinit updates once per day (non-blocking background fetch).
-# The stamp file stores the pending upstream commit count (0 = up to date).
-# Running zinit-update removes the stamp so the next shell re-checks immediately.
+# The background job writes the upstream commit count to the stamp file.
+# The notification is shown only in the same session that discovers updates,
+# not in subsequent shells reading a potentially stale stamp.
 () {
   local stamp="${XDG_CACHE_HOME:-$HOME/.cache}/zinit/update-check.stamp"
   command mkdir -p "${stamp:h}"
@@ -80,26 +81,32 @@ source "${ZINIT_HOME}/zinit.zsh"
       command git -C "$ZINIT_HOME" fetch --quiet 2>/dev/null
       local count
       count=$(command git -C "$ZINIT_HOME" rev-list --right-only --count HEAD...@'{u}' 2>/dev/null)
-      printf '%s' "${count:-0}" >| "$stamp"
+      # Only set the flag if there are actual updates; clear it otherwise
+      if (( ${count:-0} > 0 )); then
+        printf '%d' "$count" >| "$stamp"
+      else
+        printf '0' >| "$stamp"
+      fi
     ) &!
-  fi
-  # Read the count written by the last background fetch
-  local pending=0
-  [[ -f $stamp ]] && pending=$(<"$stamp")
-  if (( pending > 0 )); then
-    _zinit_update_precmd() {
-      add-zsh-hook -d precmd _zinit_update_precmd
-      unfunction _zinit_update_precmd
-      print -P "\n%F{yellow}[zinit]%f updates available. Run %F{cyan}zinit-update%f to apply.\n"
-    }
-    autoload -Uz add-zsh-hook
-    add-zsh-hook precmd _zinit_update_precmd
+  else
+    # Stamp exists and is fresh — check if a previous fetch found updates
+    local pending
+    pending=$(<"$stamp" 2>/dev/null)
+    if [[ "$pending" =~ ^[0-9]+$ ]] && (( pending > 0 )); then
+      _zinit_update_precmd() {
+        add-zsh-hook -d precmd _zinit_update_precmd
+        unfunction _zinit_update_precmd
+        print -P "\n%F{yellow}[zinit]%f updates available. Run %F{cyan}zinit-update%f to apply.\n"
+      }
+      autoload -Uz add-zsh-hook
+      add-zsh-hook precmd _zinit_update_precmd
+    fi
   fi
 }
 
-# Wrapper that updates zinit + plugins and resets the update-check stamp.
-# stty settings (especially eof=^D) can get clobbered by git subprocesses
-# spawned during the update; save and restore them around the operation.
+# Wrapper that updates zinit + plugins and marks the stamp as up to date.
+# Writes 0 to the stamp immediately so no further sessions nag until the
+# next daily fetch finds new commits.
 zinit-update() {
   local stty_save
   stty_save=$(stty -g 2>/dev/null)
@@ -110,11 +117,12 @@ zinit-update() {
   else
     stty eof "^D" 2>/dev/null
   fi
-  command rm -f "${XDG_CACHE_HOME:-$HOME/.cache}/zinit/update-check.stamp"
-  print -P "\n%F{green}[zinit]%f up to date. Stamp reset — next shell will re-check.\n"
-  # Disown any background jobs zinit may have left behind, so ^D exits
-  # immediately instead of waiting a few seconds for them to finish.
-  disown %% 2>/dev/null; disown -a 2>/dev/null
+  # Write 0 rather than deleting — avoids a race on next shell open where the
+  # background fetch hasn't written the count yet and the shell reads empty/stale
+  local stamp="${XDG_CACHE_HOME:-$HOME/.cache}/zinit/update-check.stamp"
+  printf '0' >| "$stamp"
+  print -P "\n%F{green}[zinit]%f up to date.\n"
+  disown 2>/dev/null
   return $ret
 }
 
