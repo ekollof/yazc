@@ -106,13 +106,6 @@ if [ ! -e "$VIM_EXTPATHS" ] || [ "/usr/bin/cpp" -nt "$VIM_EXTPATHS" ]; then
     awk '/^#include </ { state=1 } /End of search list/ { state=0 } /^ / && state { print "set path+=" substr($0, 2) "/**2" }' > $VIM_EXTPATHS
 fi
 
-unset SSH_AGENT_PID
-if [ "${gnupg_SSH_AUTH_SOCK_by:-0}" -ne $$ ]; then
-    export SSH_AUTH_SOCK="$(gpgconf --list-dirs agent-ssh-socket)"
-fi
-command -v gpg-connect-agent > /dev/null 2>&1 && \
-    echo UPDATESTARTUPTTY | gpg-connect-agent > /dev/null 2>&1
-
 # Defer non-critical startup commands
 if [[ ! -e ~/.noauto ]]; then
     if [ -z ${SSH_TTY} ]; then
