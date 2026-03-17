@@ -192,6 +192,12 @@ unfunction _term_has_starship_support
 command -v zoxide > /dev/null 2>&1 && eval "$(zoxide init zsh)"
 
 if command -v keychain > /dev/null 2>&1; then
+    # Ensure ksshaskpass is used for passphrase prompts so KWallet can cache them.
+    # environment.d sets these in the systemd user environment but they are not
+    # automatically inherited by the shell.
+    export SSH_ASKPASS=/usr/bin/ksshaskpass
+    export SSH_ASKPASS_REQUIRE=prefer
+
     # Find all SSH private keys (exclude .pub, known_hosts, config, etc.)
     SSH_KEYS=()
     for key in "$HOME"/.ssh/id_*; do
@@ -200,7 +206,7 @@ if command -v keychain > /dev/null 2>&1; then
             SSH_KEYS+=("$key")
         fi
     done
-    
+
     # Load all found keys into keychain
     if [[ ${#SSH_KEYS[@]} -gt 0 ]]; then
         keychain --ssh-allow-gpg -q "${SSH_KEYS[@]}"
