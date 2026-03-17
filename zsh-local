@@ -209,4 +209,14 @@ fi
 
 if [[ -e "$HOME/.keychain/$HOSTNAME-sh" ]]; then
     source "$HOME/.keychain/$HOSTNAME-sh"
+    # Propagate keychain's SSH_AUTH_SOCK into the systemd user environment and
+    # dbus activation environment so all subsequently launched processes
+    # (including those not started from this shell) use the correct agent socket.
+    # This corrects the value clobbered by 95dbus_update-activation-env at login.
+    if [[ -n "$SSH_AUTH_SOCK" ]] && command -v systemctl > /dev/null 2>&1; then
+        systemctl --user set-environment SSH_AUTH_SOCK="$SSH_AUTH_SOCK"
+    fi
+    if [[ -n "$SSH_AUTH_SOCK" ]] && command -v dbus-update-activation-environment > /dev/null 2>&1; then
+        dbus-update-activation-environment SSH_AUTH_SOCK="$SSH_AUTH_SOCK"
+    fi
 fi
