@@ -192,10 +192,11 @@ unfunction _term_has_starship_support
 command -v zoxide > /dev/null 2>&1 && eval "$(zoxide init zsh)"
 
 if command -v keychain > /dev/null 2>&1; then
-    # Ensure ksshaskpass is used for passphrase prompts so KWallet can cache them.
-    # environment.d sets these in the systemd user environment but they are not
-    # automatically inherited by the shell.
-    export SSH_ASKPASS=/usr/bin/ksshaskpass
+    # Use kwallet-askpass wrapper: retrieves/stores passphrases via kwalletcli
+    # (which works without a parent window), falling back to ksshaskpass for
+    # the actual prompt. ksshaskpass alone can't store to KWallet when invoked
+    # from ssh-add/keychain because it has no window handle.
+    export SSH_ASKPASS="$HOME/bin/kwallet-askpass"
     export SSH_ASKPASS_REQUIRE=prefer
 
     # Find all SSH private keys (exclude .pub, known_hosts, config, etc.)
