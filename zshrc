@@ -34,14 +34,14 @@ autoload -Uz compinit
 zmodload zsh/complist
 _comp_options+=(globdots)		# Include hidden files.
 
-# History search keybindings
+# History search keybindings — native zsh fallbacks.
+# Atuin owns Ctrl-R and Up arrow (bound in .zshrc after atuin init).
+# These provide prefix-search on Ctrl-P/Ctrl-N as a lightweight fallback
+# in environments where atuin is absent.
 autoload -U up-line-or-beginning-search
 autoload -U down-line-or-beginning-search
 zle -N up-line-or-beginning-search
 zle -N down-line-or-beginning-search
-bindkey "^[[A" up-line-or-beginning-search
-bindkey "^[[B" down-line-or-beginning-search
-bindkey "^P" up-line-or-beginning-search
 bindkey "^N" down-line-or-beginning-search
 
 # Colors
@@ -129,7 +129,6 @@ zinit-update() {
 # Load plugins with zinit
 zinit light zsh-users/zsh-autosuggestions
 zinit light hlissner/zsh-autopair
-zinit light joshskidmore/zsh-fzf-history-search
 
 # vi mode with proper plugin (restores sane keybindings; must load before bindkey calls)
 # zsh-vi-mode uses cursor-shape escape sequences that render as garbage on
@@ -137,9 +136,6 @@ zinit light joshskidmore/zsh-fzf-history-search
 if [[ "$COLORTERM" == (truecolor|24bit) ]]; then
   zinit light jeffreytse/zsh-vi-mode
 fi
-
-# Multi-word history search (Ctrl-R fallback when not using fzf)
-zinit light zdharma-continuum/history-search-multi-word
 
 # Additional completions
 zinit light zsh-users/zsh-completions
@@ -199,63 +195,6 @@ export FZF_ALT_C_OPTS="
   --preview 'eza --tree --color=always --icons {} 2>/dev/null || tree -C {} | head -200'
   --preview-window right:50%:wrap
 "
-
-# CTRL-R: command history with preview
-export FZF_CTRL_R_OPTS="
-  --preview 'echo {}'
-  --preview-window down:3:wrap
-  --bind 'ctrl-y:execute-silent(echo -n {2..} | xclip -selection clipboard)+abort'
-"
-
-# Override zsh-fzf-history-search to never pre-fill the fzf query with $BUFFER
-fzf_history_search() {
-  setopt extendedglob
-
-  FC_ARGS="-l"
-  CANDIDATE_LEADING_FIELDS=2
-
-  if (( ! $ZSH_FZF_HISTORY_SEARCH_EVENT_NUMBERS )); then
-    FC_ARGS+=" -n"
-    ((CANDIDATE_LEADING_FIELDS--))
-  fi
-
-  if (( $ZSH_FZF_HISTORY_SEARCH_DATES_IN_SEARCH )); then
-    FC_ARGS+=" -i"
-    ((CANDIDATE_LEADING_FIELDS+=2))
-  fi
-
-  local history_cmd="fc ${=FC_ARGS} -1 0"
-
-  if [ -n "${ZSH_FZF_HISTORY_SEARCH_REMOVE_DUPLICATES}" ]; then
-    if (( $+commands[awk] )); then
-      history_cmd="$history_cmd | awk '!seen[\$0]++'"
-    else
-      history_cmd="$history_cmd | uniq"
-    fi
-  fi
-
-  # Always start fzf with an empty query (ignore $BUFFER)
-  candidates=(${(f)"$(eval $history_cmd | fzf ${=ZSH_FZF_HISTORY_SEARCH_FZF_ARGS} ${=ZSH_FZF_HISTORY_SEARCH_FZF_EXTRA_ARGS})"})
-
-  local ret=$?
-  if [ -n "$candidates" ]; then
-    if (( $CANDIDATE_LEADING_FIELDS != 1 )); then
-      BUFFER="${candidates[@]/(#m)[0-9 \-\:\*]##/$(
-      printf '%s' "${${(As: :)MATCH}[${CANDIDATE_LEADING_FIELDS},-1]}" | sed 's/%/%%/g'
-      )}"
-    else
-      BUFFER="${(j| && |)candidates}"
-    fi
-    zle vi-fetch-history -n $BUFFER
-    if [ -n "${ZSH_FZF_HISTORY_SEARCH_END_OF_LINE}" ]; then
-      zle end-of-line
-    fi
-  fi
-
-  zle reset-prompt
-  return $ret
-}
-zle -N fzf_history_search
 
 # Run compinit once after all fpath modifications
 # Use cached dump file (re-generate once per day)

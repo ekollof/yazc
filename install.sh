@@ -109,20 +109,37 @@ install_config() {
     else
         print_success "Configuration files already in place"
     fi
-    
-    # Create/update ~/.zshrc
-    if [[ ! -f "$ZSHRC_FILE" ]] || ! grep -q "ZDOTDIR.*/.config/zsh" "$ZSHRC_FILE" 2>/dev/null; then
-        print_info "Creating/updating ~/.zshrc"
-        cat > "$ZSHRC_FILE" << 'EOF'
-# ZSH Configuration
-# Managed by ~/.config/zsh/install.sh
+}
 
-export ZDOTDIR=$HOME/.config/zsh
-source "$HOME/.config/zsh/zshrc"
-EOF
-        print_success "~/.zshrc configured"
+# Set up ~/.zshrc as a symlink to ~/.config/zsh/.zshrc.
+# Modern zsh reads ZDOTDIR/.zshrc directly; legacy machines still look for ~/.zshrc.
+setup_zshrc_symlink() {
+    print_info "Setting up ~/.zshrc symlink for legacy compatibility..."
+
+    local canonical="$ZDOTDIR/.zshrc"
+    local legacy="$ZSHRC_FILE"
+
+    if [[ ! -f "$canonical" ]]; then
+        print_warning "$canonical not found — skipping symlink setup"
+        return
+    fi
+
+    if [[ -L "$legacy" && "$(readlink "$legacy")" == "$canonical" ]]; then
+        print_success "~/.zshrc already symlinked to $canonical"
+    elif [[ -L "$legacy" ]]; then
+        print_warning "~/.zshrc is a symlink to a different target: $(readlink "$legacy")"
+        print_warning "Remove it manually if you want to point it at $canonical"
+    elif [[ -f "$legacy" ]]; then
+        # Real file exists — back it up and replace with the symlink
+        local backup="$BACKUP_DIR/.zshrc.pre-symlink"
+        mkdir -p "$BACKUP_DIR"
+        mv "$legacy" "$backup"
+        print_info "Existing ~/.zshrc backed up to $backup"
+        ln -s "$canonical" "$legacy"
+        print_success "~/.zshrc -> $canonical"
     else
-        print_success "~/.zshrc already configured"
+        ln -s "$canonical" "$legacy"
+        print_success "~/.zshrc -> $canonical"
     fi
 }
 
@@ -140,6 +157,22 @@ install_zinit() {
     fi
 }
 
+# Install atuin if needed
+install_atuin() {
+    if command -v atuin &>/dev/null; then
+        print_success "atuin already installed: $(atuin --version)"
+        return
+    fi
+
+    print_info "Installing atuin (shell history)..."
+    if curl --proto '=https' --tlsv1.2 -LsSf https://setup.atuin.sh | sh; then
+        print_success "atuin installed"
+        print_info "Run 'atuin register' to set up sync, or 'atuin import auto' to import existing history"
+    else
+        print_warning "atuin installation failed — install manually from https://atuin.sh"
+    fi
+}
+
 # Check optional tools
 check_optional_tools() {
     print_info "Checking optional tools..."
@@ -152,6 +185,7 @@ check_optional_tools() {
         chafa "Image previews in terminal"
         starship "Modern prompt"
         mise "Runtime version manager"
+        atuin "Shell history sync and search"
     )
     
     for tool desc in ${(kv)tools}; do
@@ -195,7 +229,13 @@ main() {
     install_config
     print
     
+    setup_zshrc_symlink
+    print
+    
     install_zinit
+    print
+    
+    install_atuin
     print
     
     check_optional_tools
