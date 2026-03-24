@@ -1,17 +1,27 @@
 #!/bin/zsh
 export ZDOTDIR=$HOME/.config/zsh
 
+# Bail out early for dumb terminals (Emacs TRAMP, etc.) — skip all plugin
+# loading and interactive setup so startup is instant in those contexts.
+if [[ "$TERM" == "dumb" ]]; then
+  unset zle_bracketed_paste
+  unset zle
+  PS1='$ '
+  return
+fi
+
 HISTSIZE=100000
 SAVEHIST=100000
-HISTFILE=~/.zsh_history
+HISTFILE="$HOME/.zsh_history"
 setopt appendhistory
-setopt sharehistory
+# sharehistory is omitted: atuin is the history backend; letting zsh also
+# re-read the flat history file on every prompt wastes I/O and causes
+# interleaving between the two stores.
 setopt hist_ignore_space
 setopt hist_ignore_all_dups
 setopt hist_save_no_dups
 setopt hist_ignore_dups
 setopt hist_find_no_dups
-
 
 # some useful options (man zshoptions)
 setopt autocd extendedglob nomatch menucomplete
@@ -141,9 +151,32 @@ fi
 zinit light zsh-users/zsh-completions
 
 # Useful OMZ plugins
-zinit snippet OMZP::git
+# git omz plugin replaced with hand-picked aliases below (avoids loading ~300
+# aliases and patching PATH/GIT_TERMINAL_PROMPT for ones we don't use)
 zinit snippet OMZP::sudo
 zinit snippet OMZP::extract
+
+# Hand-picked git aliases (replaces OMZP::git)
+alias g='git'
+alias ga='git add'
+alias gaa='git add --all'
+alias gc='git commit --verbose'
+alias gcm='git commit -m'
+alias gca='git commit --verbose --all'
+alias gco='git checkout'
+alias gcb='git checkout -b'
+alias gd='git diff'
+alias gds='git diff --staged'
+alias gl='git log --oneline --graph --decorate'
+alias gll='git log --oneline --graph --decorate --all'
+alias gp='git push'
+alias gpl='git pull'
+alias grb='git rebase'
+alias grs='git restore'
+alias grss='git restore --staged'
+alias gst='git status'
+alias gsw='git switch'
+alias gswc='git switch -c'
 
 # Alias reminder
 zinit light MichaelAquilina/zsh-you-should-use
@@ -164,6 +197,10 @@ bindkey '^e' end-of-line           # Ctrl-E: move to end of line (standard)
 
 # FZF configuration
 export FZF_DEFAULT_COMMAND='rg --hidden --no-ignore-vcs -l ""'
+
+# Use fd instead of find if available (overrides rg default above)
+command -v fd > /dev/null 2>&1 && export FZF_DEFAULT_COMMAND='fd --type f --hidden --follow --exclude .git'
+
 export FZF_DEFAULT_OPTS="
   --height=40%
   --layout=reverse
@@ -179,10 +216,7 @@ export FZF_DEFAULT_OPTS="
   --bind='ctrl-y:execute-silent(echo -n {+} | xclip -selection clipboard)'
 "
 
-# Use fd instead of find if available
-command -v fd > /dev/null 2>&1 && export FZF_DEFAULT_COMMAND='fd --type f --hidden --follow --exclude .git'
-
-# CTRL-T: Paste selected files/dirs
+# CTRL-T: Paste selected files/dirs — inherits FZF_DEFAULT_COMMAND (set above)
 export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
 export FZF_CTRL_T_OPTS="
   --preview '(bat --color=always --style=numbers --line-range=:500 {} 2> /dev/null || cat {} 2> /dev/null || tree -C {} 2> /dev/null) 2> /dev/null'

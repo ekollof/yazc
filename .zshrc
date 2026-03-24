@@ -7,7 +7,7 @@ source "$HOME/.config/zsh/zshrc"
 # You *can* add stuff after this, but it wouldn't be nice.
 
 # opencode
-export PATH=/home/ekollof/.opencode/bin:$PATH
+export PATH=$HOME/.opencode/bin:$PATH
 
 . "$HOME/.atuin/bin/env"
 

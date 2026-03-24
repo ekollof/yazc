@@ -3,25 +3,32 @@
 # Preferred editor for local and remote sessions
 export EDITOR=nvim
 
-# Compilation flags
-# export ARCHFLAGS="-arch x86_64"
+# Keep unique PATH entries (mirror of zshrc — catches everything added below)
+typeset -U path PATH
 
-# Set personal aliases, overriding those provided by oh-my-zsh libs,
-# plugins, and themes. Aliases can be placed here, though oh-my-zsh
-# users are encouraged to define aliases within the ZSH_CUSTOM folder.
-# For a full list of active aliases, run `alias`.
+# PATH additions — use array form so typeset -U deduplicates automatically
+path=(
+  ~/bin
+  ~/.config/emacs/bin
+  ~/.local/bin
+  ~/.cargo/bin
+  ~/node_modules/.bin
+  $GOPATH/bin
+  /home/ekollof/.opencode/bin  # kept here for clarity; .zshrc also adds it
+  $path
+)
 
-export PATH=$PATH:~/bin:~/.config/emacs/bin
+# Go
+export GOPATH=$HOME/go
 
-if [[ -e ~/bin/aliases.sh ]]; then
-    source ~/bin/aliases.sh
+# Gem
+if command -v ruby > /dev/null 2>&1; then
+  GEM_USER_DIR=$(ruby -e 'puts Gem.user_dir' 2>/dev/null)
+  [[ -n "$GEM_USER_DIR" ]] && path+=("$GEM_USER_DIR/bin")
 fi
 
-if [[ "$TERM" == "dumb" ]]; then
-    unset zle_bracketed_paste
-    unset zle
-    PS1='$ '
-    return
+if [[ -e ~/bin/aliases.sh ]]; then
+  source ~/bin/aliases.sh
 fi
 
 if [[ -n "$KITTY_WINDOW_ID" ]]; then
@@ -49,14 +56,13 @@ if [[ -n "$KITTY_WINDOW_ID" ]]; then
   fi
 fi
 
-  reload_gtk() {
+reload_gtk() {
+  local theme
   theme=$(gsettings get org.gnome.desktop.interface gtk-theme)
   gsettings set org.gnome.desktop.interface gtk-theme ''
   sleep 1
-  gsettings set org.gnome.desktop.interface gtk-theme $theme
+  gsettings set org.gnome.desktop.interface gtk-theme "$theme"
 }
-
-
 
 alias config='git --git-dir=$HOME/.cfg/ --work-tree=$HOME'
 
@@ -64,166 +70,146 @@ alias config='git --git-dir=$HOME/.cfg/ --work-tree=$HOME'
 export VIRSH_DEFAULT_CONNECT_URI=qemu:///system
 export LIBVIRT_DEFAULT_URI=qemu:///system
 
-# added by pipsi (https://github.com/mitsuhiko/pipsi)
-export PATH="$HOME/.local/bin:$PATH"
-
-# Cargo
-export PATH="$HOME/.cargo/bin:$PATH"
-
-# NPM
-export PATH="$HOME/node_modules/.bin:$PATH"
-
-# Go
-export GOPATH=$HOME/go
-export PATH=$PATH:$GOPATH/bin
-
-# Gem
-if command -v ruby > /dev/null 2>&1; then
-    GEM_USER_DIR=$(ruby -e 'puts Gem.user_dir' 2>/dev/null)
-    [ -n "$GEM_USER_DIR" ] && PATH="$PATH:$GEM_USER_DIR/bin"
-fi
-
 # xterm transparency
-if [ -v XTERM_VERSION ]
-then
-    if hash transset-df 2> /dev/null
-    then
-        transset-df --id "$WINDOWID" 0.75 > /dev/null
-    elif hash transset 2> /dev/null
-    then
-        transset --id "$WINDOWID" 0.75 > /dev/null
-    fi
+if [[ -v XTERM_VERSION ]]; then
+  if command -v transset-df > /dev/null 2>&1; then
+    transset-df --id "$WINDOWID" 0.75 > /dev/null
+  elif command -v transset > /dev/null 2>&1; then
+    transset --id "$WINDOWID" 0.75 > /dev/null
+  fi
 fi
 
-if [[ "$TERM" == "xterm-termite" ]]; then
-    export TERM=xterm-256color
+# Apply wallust colour theme (local sessions only, skip over SSH)
+if [[ ! -e ~/.noauto && -z "$SSH_TTY" ]]; then
+  if command -v wallust > /dev/null 2>&1 && [[ -f ~/.wallpaper ]]; then
+    () {
+      local _wseq="${XDG_CACHE_HOME:-$HOME/.cache}/wallust/sequences"
+      local _wstamp="${XDG_CACHE_HOME:-$HOME/.cache}/wallust/applied.stamp"
+      command mkdir -p "${_wstamp:h}"
+      # Re-generate theme only when wallpaper changes
+      if [[ ! -f $_wstamp || ~/.wallpaper -nt $_wstamp ]]; then
+        (wallust run -u -q "$(<~/.wallpaper)" && touch "$_wstamp" &)
+      fi
+      # Always replay colour sequences into every new terminal window
+      [[ -f $_wseq ]] && command cat "$_wseq"
+    }
+  fi
 fi
 
-# add additional search paths to vim.
-VIM_EXTPATHS="$HOME/.vim.extpaths"
-if [ ! -e "$VIM_EXTPATHS" ] || [ "/usr/bin/cpp" -nt "$VIM_EXTPATHS" ]; then
-    echo | cpp -v 2>&1 | \
-    awk '/^#include </ { state=1 } /End of search list/ { state=0 } /^ / && state { print "set path+=" substr($0, 2) "/**2" }' > $VIM_EXTPATHS
-fi
-
-# Defer non-critical startup commands
-if [[ ! -e ~/.noauto ]]; then
-    if [ -z ${SSH_TTY} ]; then
-        if command -v wallust > /dev/null 2>&1 && [ -f ~/.wallpaper ]; then
-            local _wseq="${XDG_CACHE_HOME:-$HOME/.cache}/wallust/sequences"
-            local _wstamp="${XDG_CACHE_HOME:-$HOME/.cache}/wallust/applied.stamp"
-            command mkdir -p "${_wstamp:h}"
-            # Re-generate theme only when wallpaper changes
-            if [[ ! -f $_wstamp ]] || [[ ~/.wallpaper -nt $_wstamp ]]; then
-                (wallust run -u -q "$(<~/.wallpaper)" && touch "$_wstamp" &)
-            fi
-            # Always replay colour sequences into every new terminal window
-            [[ -f $_wseq ]] && command cat "$_wseq"
-            unset _wstamp _wseq
-        fi
-    fi
-fi
-
-if command -v fortune > /dev/null 2>&1; then
-    fortune -o
+# fortune — interactive shells only, skip over SSH to avoid cluttering scp/rsync
+if [[ -o interactive && -z "$SSH_TTY" ]]; then
+  command -v fortune > /dev/null 2>&1 && fortune -o
 fi
 
 case $TERM in
-    (*xterm* | rxvt | rxvt-unicode-256color)
-        # Skip for kitty: shell integration handles titles via OSC natively
-        if [[ -z "$KITTY_WINDOW_ID" ]]; then
-            function precmd {
-                print -Pn "\e]0;%(1j,%j job%(2j|s|); ,)%~\a"
-            }
-            function preexec {
-                printf "\033]0;%s\a" "$1"
-            }
-        fi
-    ;;
+  (*xterm* | rxvt | rxvt-unicode-256color)
+    # Skip for kitty: shell integration handles titles via OSC natively
+    if [[ -z "$KITTY_WINDOW_ID" ]]; then
+      function precmd { print -Pn "\e]0;%(1j,%j job%(2j|s|); ,)%~\a" }
+      function preexec { printf "\033]0;%s\a" "$1" }
+    fi
+  ;;
 esac
 
 # Conditionally load mise (must load before carapace so tools are in PATH)
-command -v mise > /dev/null 2>&1 && eval "$(mise activate zsh)"
+# Cache the init script — regenerate only when the mise binary changes.
+if command -v mise > /dev/null 2>&1; then
+  () {
+    local _cache="${XDG_CACHE_HOME:-$HOME/.cache}/mise/init.zsh"
+    local _bin="${commands[mise]}"
+    command mkdir -p "${_cache:h}"
+    if [[ ! -f $_cache || $_bin -nt $_cache ]]; then
+      mise activate zsh >| "$_cache" 2>/dev/null
+    fi
+    source "$_cache"
+  }
+fi
 
 # Conditionally load carapace (after mise so it can find mise-installed tools)
 # Use a cached completion script — regenerate only when carapace binary changes
 if command -v carapace > /dev/null 2>&1; then
-  local _carapace_cache="${XDG_CACHE_HOME:-$HOME/.cache}/carapace/init.zsh"
-  local _carapace_bin="${commands[carapace]}"
-  command mkdir -p "${_carapace_cache:h}"
-  # Regenerate if cache is missing or older than the carapace binary
-  if [[ ! -f $_carapace_cache ]] || [[ $_carapace_bin -nt $_carapace_cache ]]; then
-    carapace _carapace zsh >| "$_carapace_cache" 2>/dev/null
-  fi
-  source "$_carapace_cache"
-  unset _carapace_cache _carapace_bin
+  () {
+    local _carapace_cache="${XDG_CACHE_HOME:-$HOME/.cache}/carapace/init.zsh"
+    local _carapace_bin="${commands[carapace]}"
+    command mkdir -p "${_carapace_cache:h}"
+    if [[ ! -f $_carapace_cache || $_carapace_bin -nt $_carapace_cache ]]; then
+      carapace _carapace zsh >| "$_carapace_cache" 2>/dev/null
+    fi
+    source "$_carapace_cache"
+  }
 fi
 
 # Conditionally load starship (overrides custom prompt from zsh-prompt)
 # Skip starship on terminals that lack 256-color or truecolor support.
-# CDE's dtterm reports $TERM=dtterm and tput colors=8 with no COLORTERM.
-# Modern terminals (alacritty, ghostty, st, kitty) set COLORTERM=truecolor.
+# Cache the init script — regenerate only when the starship binary changes.
 _term_has_starship_support() {
-  # Reject explicitly known limited terminals
   case "$TERM" in
-    dtterm|cde*|dumb|vt[0-9]*)
-      return 1
-      ;;
+    dtterm|cde*|dumb|vt[0-9]*) return 1 ;;
   esac
-
-  # Require at least 256 colors (dtterm/xterm report 8)
   local ncolors
   ncolors=$(tput colors 2>/dev/null) || return 1
   (( ncolors >= 256 )) || return 1
-
-  # Require truecolor declaration — set by capable terminals regardless of
-  # locale. dtterm and similar do not set this variable.
   [[ "$COLORTERM" == (truecolor|24bit) ]] || return 1
-
   return 0
 }
 
 if command -v starship > /dev/null 2>&1 && _term_has_starship_support; then
-  eval "$(starship init zsh)"
+  () {
+    local _cache="${XDG_CACHE_HOME:-$HOME/.cache}/starship/init.zsh"
+    local _bin="${commands[starship]}"
+    command mkdir -p "${_cache:h}"
+    if [[ ! -f $_cache || $_bin -nt $_cache ]]; then
+      starship init zsh >| "$_cache" 2>/dev/null
+    fi
+    source "$_cache"
+  }
+  # starship manages the prompt — remove the vcs_info precmd hook that
+  # zsh-prompt registered so it doesn't run a git process on every prompt
+  # for no visible benefit.
+  precmd_functions=("${(@)precmd_functions:#precmd_vcs_info}")
 fi
 unfunction _term_has_starship_support
 
 # Conditionally load zoxide (smarter cd)
-command -v zoxide > /dev/null 2>&1 && eval "$(zoxide init zsh)"
-
-if command -v keychain > /dev/null 2>&1; then
-    # Use kwallet-askpass wrapper: retrieves/stores passphrases via kwalletcli
-    # (which works without a parent window), falling back to ksshaskpass for
-    # the actual prompt. ksshaskpass alone can't store to KWallet when invoked
-    # from ssh-add/keychain because it has no window handle.
-    export SSH_ASKPASS="$HOME/bin/kwallet-askpass"
-    export SSH_ASKPASS_REQUIRE=prefer
-
-    # Find all SSH private keys (exclude .pub, known_hosts, config, etc.)
-    SSH_KEYS=()
-    for key in "$HOME"/.ssh/id_*; do
-        # Only add if it exists, is a file, and is not a .pub file
-        if [[ -f "$key" && "$key" != *.pub ]]; then
-            SSH_KEYS+=("$key")
-        fi
-    done
-
-    # Load all found keys into keychain
-    if [[ ${#SSH_KEYS[@]} -gt 0 ]]; then
-        keychain --ssh-allow-gpg -q "${SSH_KEYS[@]}"
+# Cache the init script — regenerate only when the zoxide binary changes.
+if command -v zoxide > /dev/null 2>&1; then
+  () {
+    local _cache="${XDG_CACHE_HOME:-$HOME/.cache}/zoxide/init.zsh"
+    local _bin="${commands[zoxide]}"
+    command mkdir -p "${_cache:h}"
+    if [[ ! -f $_cache || $_bin -nt $_cache ]]; then
+      zoxide init zsh >| "$_cache" 2>/dev/null
     fi
+    source "$_cache"
+  }
 fi
 
-if [[ -e "$HOME/.keychain/$HOSTNAME-sh" ]]; then
-    source "$HOME/.keychain/$HOSTNAME-sh"
-    # Propagate keychain's SSH_AUTH_SOCK into the systemd user environment and
-    # dbus activation environment so all subsequently launched processes
-    # (including those not started from this shell) use the correct agent socket.
-    # This corrects the value clobbered by 95dbus_update-activation-env at login.
-    if [[ -n "$SSH_AUTH_SOCK" ]] && command -v systemctl > /dev/null 2>&1; then
-        systemctl --user set-environment SSH_AUTH_SOCK="$SSH_AUTH_SOCK"
-    fi
-    if [[ -n "$SSH_AUTH_SOCK" ]] && command -v dbus-update-activation-environment > /dev/null 2>&1; then
-        dbus-update-activation-environment SSH_AUTH_SOCK="$SSH_AUTH_SOCK"
-    fi
+if command -v keychain > /dev/null 2>&1; then
+  # Use kwallet-askpass wrapper: retrieves/stores passphrases via kwalletcli
+  # (which works without a parent window), falling back to ksshaskpass for
+  # the actual prompt. ksshaskpass alone can't store to KWallet when invoked
+  # from ssh-add/keychain because it has no window handle.
+  export SSH_ASKPASS="$HOME/bin/kwallet-askpass"
+  export SSH_ASKPASS_REQUIRE=prefer
+
+  # Find all SSH private keys (exclude .pub, known_hosts, config, etc.)
+  local -a SSH_KEYS=()
+  for key in "$HOME"/.ssh/id_*; do
+    [[ -f "$key" && "$key" != *.pub ]] && SSH_KEYS+=("$key")
+  done
+
+  [[ ${#SSH_KEYS[@]} -gt 0 ]] && keychain --ssh-allow-gpg -q "${SSH_KEYS[@]}"
+fi
+
+if [[ -e "$HOME/.keychain/$HOST-sh" ]]; then
+  source "$HOME/.keychain/$HOST-sh"
+  # Propagate keychain's SSH_AUTH_SOCK into the systemd user environment and
+  # dbus activation environment so all subsequently launched processes
+  # (including those not started from this shell) use the correct agent socket.
+  if [[ -n "$SSH_AUTH_SOCK" ]] && command -v systemctl > /dev/null 2>&1; then
+    systemctl --user set-environment SSH_AUTH_SOCK="$SSH_AUTH_SOCK"
+  fi
+  if [[ -n "$SSH_AUTH_SOCK" ]] && command -v dbus-update-activation-environment > /dev/null 2>&1; then
+    dbus-update-activation-environment SSH_AUTH_SOCK="$SSH_AUTH_SOCK"
+  fi
 fi
