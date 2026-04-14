@@ -253,9 +253,8 @@ zstyle ':completion:*:descriptions' format '[%d]'
 # Set list-colors to enable filename colorizing
 zstyle ':completion:*' list-colors ${(s.:.)LS_COLORS}
 # Configure keybindings for fzf-tab
-# Use Right arrow for continuous completion instead of '/' (which conflicts with fzf filtering)
+# Use Right arrow for continuous completion (via --expect, not a custom fzf binding)
 zstyle ':fzf-tab:*' continuous-trigger 'right'
-zstyle ':fzf-tab:*' fzf-bindings 'right:execute-silent(echo {+})+abort'
 # Make Enter accept selection and exit
 zstyle ':fzf-tab:*' accept-line enter
 # Enhanced preview with image support
@@ -315,6 +314,41 @@ zstyle ':fzf-tab:*' switch-group '<' '>'
 # Syntax highlighting - MUST be loaded last for compatibility
 zinit light zdharma-continuum/fast-syntax-highlighting
 
+# Fix fzf-tab double-escaping spaces in filenames during continuous completion.
+# fzf-tab's C module (fzf-tab-compcap-generate) stores zsh-tokenized words in
+# compcap; when read back in _fzf-tab-apply they are double-escaped (\\ instead
+# of \). Override the function to apply one (Q) unquote before insertion.
+_fzf-tab-apply() {
+  local choice bs=$'\2'
+  for choice in "$_ftb_choices[@]"; do
+    local match=${_ftb_compcap[(r)${(b)choice}$bs*]}
+    if [[ -z $match ]]; then
+      local qchoice=${(q)choice}
+      match=${_ftb_compcap[(r)${(b)qchoice}$bs*]}
+    fi
+    [[ -z $match ]] && continue
+    local -A v=("${(@0)${match#*$bs}}")
+    local -a args=("${(@ps:\1:)v[args]}")
+    [[ -z $args[1] ]] && args=()
+    IPREFIX=${v[IPREFIX]-} PREFIX=${v[PREFIX]-} SUFFIX=${v[SUFFIX]-} ISUFFIX=${v[ISUFFIX]-}
+    local word=$v[word]
+    # The C module (fzf-tab-compcap-generate) stores zsh-tokenized words in
+    # compcap. When read back they are double-escaped (e.g. \\ instead of \).
+    # One (Q) unquote restores the correct single-escape for shell insertion.
+    # We only do this when the word actually contains a backslash to avoid
+    # altering non-file completions.
+    [[ $word == *\\* ]] && word=${(Q)word}
+    builtin compadd "${args[@]:--Q}" -Q -- "$word"
+  done
+
+  compstate[list]=
+  if (( $#_ftb_choices == 1 )); then
+    compstate[insert]='1'
+    [[ $RBUFFER == ' '* ]] || compstate[insert]+=' '
+  elif (( $#_ftb_choices > 1 )); then
+    compstate[insert]='all'
+  fi
+}
 source "$ZDOTDIR/zsh-local"
 
 
