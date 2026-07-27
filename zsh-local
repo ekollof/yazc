@@ -222,7 +222,7 @@ if command -v keychain > /dev/null 2>&1; then
     [[ -f "$key" && "$key" != *.pub ]] && SSH_KEYS+=("$key")
   done
 
-  [[ ${#SSH_KEYS[@]} -gt 0 ]] && keychain --ssh-allow-gpg -q "${SSH_KEYS[@]}"
+  [[ ${#SSH_KEYS[@]} -gt 0 ]] && keychain -q "${SSH_KEYS[@]}"
 fi
 
 if [[ -e "$HOME/.keychain/$HOST-sh" ]]; then
