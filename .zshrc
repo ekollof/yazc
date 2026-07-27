@@ -6,6 +6,11 @@ source "$HOME/.config/zsh/zshrc"
 
 # You *can* add stuff after this, but it wouldn't be nice.
 
+# Over SSH, kitten ssh won't work (no real kitty window). Fall back to plain ssh.
+if [[ -n "$SSH_CONNECTION" ]]; then
+  unalias ssh 2>/dev/null
+fi
+
 # opencode
 export PATH=$HOME/.opencode/bin:$PATH
 
@@ -39,3 +44,9 @@ if (( ${+functions[zvm_after_init_commands]} )); then
 else
   _atuin_bind
 fi
+
+# >>> grok installer >>>
+export PATH="$HOME/.grok/bin:$PATH"
+fpath=(~/.grok/completions/zsh $fpath)
+autoload -Uz compinit && compinit -C
+# <<< grok installer <<<

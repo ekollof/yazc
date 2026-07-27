@@ -41,7 +41,8 @@ if [[ -n "$KITTY_WINDOW_ID" ]]; then
   fi
 
   # Use the kitten SSH wrapper so terminfo and features carry over to remote hosts
-  alias ssh='kitten ssh'
+  # Skip when already inside an SSH session — kitten ssh only works locally.
+  [[ -z "$SSH_TTY" ]] && alias ssh='kitten ssh'
 
   # Side-by-side diff with syntax highlighting
   alias diff='kitten diff'
@@ -185,12 +186,35 @@ if command -v zoxide > /dev/null 2>&1; then
 fi
 
 if command -v keychain > /dev/null 2>&1; then
-  # Use kwallet-askpass wrapper: retrieves/stores passphrases via kwalletcli
-  # (which works without a parent window), falling back to ksshaskpass for
-  # the actual prompt. ksshaskpass alone can't store to KWallet when invoked
-  # from ssh-add/keychain because it has no window handle.
-  export SSH_ASKPASS="$HOME/bin/kwallet-askpass"
-  export SSH_ASKPASS_REQUIRE=prefer
+  # Store/retrieve SSH key passphrases in KWallet via ksshaskpass.
+  # (Also set session-wide in ~/.config/environment.d/ssh_askpass.conf.)
+  if [[ -x /usr/bin/ksshaskpass ]]; then
+    export SSH_ASKPASS=/usr/bin/ksshaskpass
+    export SSH_ASKPASS_REQUIRE=prefer
+    export GIT_ASKPASS=/usr/bin/ksshaskpass
+  fi
+
+  # Drop stale agent env left over from a previous login (socket file can
+  # outlive the process → "Error connecting to agent: Connection refused").
+  # ssh-add exit: 0 = has keys, 1 = no identities (agent OK), 2 = cannot connect
+  local _ssh_add_rc=0
+  if [[ -n "$SSH_AUTH_SOCK" ]]; then
+    ssh-add -l &>/dev/null
+    _ssh_add_rc=$?
+    if (( _ssh_add_rc == 2 )); then
+      unset SSH_AUTH_SOCK SSH_AGENT_PID
+      rm -f "$HOME/.keychain/$HOST-sh" "$HOME/.keychain/$HOST-csh" "$HOME/.keychain/$HOST-fish" 2>/dev/null
+    fi
+  fi
+  if [[ -e "$HOME/.keychain/$HOST-sh" ]]; then
+    source "$HOME/.keychain/$HOST-sh"
+    ssh-add -l &>/dev/null
+    _ssh_add_rc=$?
+    if (( _ssh_add_rc == 2 )); then
+      unset SSH_AUTH_SOCK SSH_AGENT_PID
+      rm -f "$HOME/.keychain/$HOST-sh" "$HOME/.keychain/$HOST-csh" "$HOME/.keychain/$HOST-fish" 2>/dev/null
+    fi
+  fi
 
   # Find all SSH private keys (exclude .pub, known_hosts, config, etc.)
   local -a SSH_KEYS=()
