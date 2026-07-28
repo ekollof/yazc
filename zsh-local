@@ -31,7 +31,11 @@ if [[ -e ~/bin/aliases.sh ]]; then
   source ~/bin/aliases.sh
 fi
 
-if [[ -n "$KITTY_WINDOW_ID" ]]; then
+# Real Kitty sets KITTY_PID and a *numeric* KITTY_WINDOW_ID.
+# cosmic-term (and similar) may set KITTY_WINDOW_ID=cosmic-term only to advertise
+# the Kitty graphics protocol — that is not a real Kitty window. Kittens that
+# need Kitty IPC (ssh, clipboard, shell-integration, …) must not run there.
+if [[ -n "$KITTY_PID" && "$KITTY_WINDOW_ID" == <-> ]]; then
   # Load kitty shell integration (marks, OSC title, cursor shape, etc.)
   # KITTY_INSTALLATION_DIR is set by kitty in the environment
   if [[ -n "$KITTY_INSTALLATION_DIR" ]]; then
@@ -104,8 +108,9 @@ fi
 
 case $TERM in
   (*xterm* | rxvt | rxvt-unicode-256color)
-    # Skip for kitty: shell integration handles titles via OSC natively
-    if [[ -z "$KITTY_WINDOW_ID" ]]; then
+    # Skip only for real Kitty (shell integration handles titles via OSC).
+    # cosmic-term's KITTY_WINDOW_ID=cosmic-term is graphics advertising only.
+    if [[ -z "$KITTY_PID" || "$KITTY_WINDOW_ID" != <-> ]]; then
       function precmd { print -Pn "\e]0;%(1j,%j job%(2j|s|); ,)%~\a" }
       function preexec { printf "\033]0;%s\a" "$1" }
     fi

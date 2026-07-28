@@ -6,8 +6,10 @@ source "$HOME/.config/zsh/zshrc"
 
 # You *can* add stuff after this, but it wouldn't be nice.
 
-# Over SSH, kitten ssh won't work (no real kitty window). Fall back to plain ssh.
-if [[ -n "$SSH_CONNECTION" ]]; then
+# kitten ssh needs a real Kitty window (KITTY_PID + numeric KITTY_WINDOW_ID).
+# Drop the alias over SSH, or in any non-Kitty terminal (e.g. cosmic-term sets
+# KITTY_WINDOW_ID=cosmic-term only for graphics protocol advertising).
+if [[ -n "$SSH_CONNECTION" || -z "$KITTY_PID" || "$KITTY_WINDOW_ID" != <-> ]]; then
   unalias ssh 2>/dev/null
 fi
 
