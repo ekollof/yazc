@@ -84,8 +84,10 @@ if [[ -v XTERM_VERSION ]]; then
   fi
 fi
 
-# Apply wallust colour theme (local sessions only, skip over SSH)
-if [[ ! -e ~/.noauto && -z "$SSH_TTY" ]]; then
+# Apply wallust colour theme (local sessions only, skip over SSH).
+# Sequences are truecolor OSC 4/11 palette sets — skip on legacy terminals
+# (dtterm, vt*, …) that cannot apply them and may emit garbage instead.
+if [[ ! -e ~/.noauto && -z "$SSH_TTY" ]] && _term_has_truecolor; then
   if command -v wallust > /dev/null 2>&1 && [[ -f ~/.wallpaper ]]; then
     () {
       local _wseq="${XDG_CACHE_HOME:-$HOME/.cache}/wallust/sequences"
@@ -145,21 +147,10 @@ if command -v carapace > /dev/null 2>&1; then
   }
 fi
 
-# Conditionally load starship (overrides custom prompt from zsh-prompt)
-# Skip starship on terminals that lack 256-color or truecolor support.
+# Conditionally load starship (overrides custom prompt from zsh-prompt).
+# Skip on limited terminals — fall back to zsh-prompt (8-color-safe).
 # Cache the init script — regenerate only when the starship binary changes.
-_term_has_starship_support() {
-  case "$TERM" in
-    dtterm|cde*|dumb|vt[0-9]*) return 1 ;;
-  esac
-  local ncolors
-  ncolors=$(tput colors 2>/dev/null) || return 1
-  (( ncolors >= 256 )) || return 1
-  [[ "$COLORTERM" == (truecolor|24bit) ]] || return 1
-  return 0
-}
-
-if command -v starship > /dev/null 2>&1 && _term_has_starship_support; then
+if command -v starship > /dev/null 2>&1 && _term_has_truecolor; then
   () {
     local _cache="${XDG_CACHE_HOME:-$HOME/.cache}/starship/init.zsh"
     local _bin="${commands[starship]}"
@@ -174,7 +165,6 @@ if command -v starship > /dev/null 2>&1 && _term_has_starship_support; then
   # for no visible benefit.
   precmd_functions=("${(@)precmd_functions:#precmd_vcs_info}")
 fi
-unfunction _term_has_starship_support
 
 # Conditionally load zoxide (smarter cd)
 # Cache the init script — regenerate only when the zoxide binary changes.

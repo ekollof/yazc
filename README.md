@@ -250,12 +250,23 @@ autoload -Uz compinit && compinit
 
 ## Terminal Compatibility
 
+The config detects limited terminals via `$TERM` + terminfo colors (not ambient
+`COLORTERM` alone — session managers often export `COLORTERM=truecolor` even
+inside CDE dtterm). Fancy features degrade gracefully:
+
+| Feature | Requires | On limited terms |
+|---------|----------|------------------|
+| starship | truecolor | fallback `zsh-prompt` |
+| zsh-vi-mode | 256-color | not loaded (no leaked `q` from DECSCUSR) |
+| wallust sequences | truecolor | skipped |
+
 Tested with:
 - kitty (with SSH kitten support)
-- xterm
+- xterm / xterm-256color
 - rxvt/urxvt
 - termite
-- dumb terminals (Emacs support)
+- CDE dtterm (8-color fallback prompt, no cursor-shape garbage)
+- dumb terminals (Emacs TRAMP support)
 
 ## License
 

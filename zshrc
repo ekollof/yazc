@@ -10,6 +10,44 @@ if [[ "$TERM" == "dumb" ]]; then
   return
 fi
 
+# ---------------------------------------------------------------------------
+# Terminal capability helpers
+#
+# Ambient COLORTERM=truecolor is often set session-wide (environment.d, DE
+# session) even when the actual emulator is limited (CDE dtterm, classic
+# vt*, linux console). Prefer TERM + terminfo colors over COLORTERM alone.
+# Features that emit modern CSI/OSC (cursor shape, truecolor OSC, starship)
+# must consult these helpers so low-capability terminals degrade cleanly.
+# ---------------------------------------------------------------------------
+zmodload zsh/terminfo 2>/dev/null
+
+# Known-bad / legacy TERM values that mishandle modern CSI (esp. DECSCUSR
+# cursor-shape `\e[N q`, which leaks as literal `q` on dtterm).
+_term_is_legacy() {
+  case ${TERM:-dumb} in
+    dumb|dtterm|cde*|vt[0-9]*|ansi|linux) return 0 ;;
+  esac
+  return 1
+}
+
+# 256-color-capable terminal that is not on the legacy deny list.
+# Safe baseline for cursor-shape sequences and 256-color prompts.
+_term_has_256color() {
+  _term_is_legacy && return 1
+  local ncolors=${terminfo[colors]:--1}
+  if (( ncolors < 0 )); then
+    ncolors=$(tput colors 2>/dev/null) || return 1
+  fi
+  (( ncolors >= 256 ))
+}
+
+# Truecolor only when the emulator itself claims it *and* is not legacy.
+# Do not trust COLORTERM alone — it is often inherited from the session.
+_term_has_truecolor() {
+  _term_has_256color || return 1
+  [[ "$COLORTERM" == (truecolor|24bit) ]]
+}
+
 HISTSIZE=100000
 SAVEHIST=100000
 HISTFILE="$HOME/.zsh_history"
@@ -141,9 +179,11 @@ zinit light zsh-users/zsh-autosuggestions
 zinit light hlissner/zsh-autopair
 
 # vi mode with proper plugin (restores sane keybindings; must load before bindkey calls)
-# zsh-vi-mode uses cursor-shape escape sequences that render as garbage on
-# terminals without truecolor support (e.g. CDE's dtterm).
-if [[ "$COLORTERM" == (truecolor|24bit) ]]; then
+# zsh-vi-mode emits DECSCUSR cursor-shape sequences (`\e[N q`). On terminals
+# that ignore the CSI but print the final `q` (notably CDE's dtterm) the
+# prompt ends with literal "qq". Gate on real terminal capability — not
+# ambient COLORTERM, which is often truecolor even inside dtterm.
+if _term_has_256color; then
   zinit light jeffreytse/zsh-vi-mode
 fi
 
