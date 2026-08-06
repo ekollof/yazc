@@ -211,10 +211,12 @@ if command -v keychain > /dev/null 2>&1; then
     fi
   fi
 
-  # Find all SSH private keys (exclude .pub, known_hosts, config, etc.)
+  # Find all SSH private keys (exclude .pub, known_hosts, config, etc.).
+  # (N.) = nullglob + regular files only, so accounts with no id_* keys
+  # (agent-only / forwarded agent) do not trip zsh's nomatch error.
   local -a SSH_KEYS=()
-  for key in "$HOME"/.ssh/id_*; do
-    [[ -f "$key" && "$key" != *.pub ]] && SSH_KEYS+=("$key")
+  for key in "$HOME"/.ssh/id_*(N.); do
+    [[ "$key" != *.pub ]] && SSH_KEYS+=("$key")
   done
 
   # --immediate: skip "Press Enter to initialize keys" coordination prompt
