@@ -157,19 +157,49 @@ install_zinit() {
     fi
 }
 
-# Install atuin if needed
+# Install atuin if needed — prefer the distro package so it stays in sync with
+# the rest of the system. Fall back to the official cargo-dist installer into
+# ~/.atuin/bin when no package is available (non-Arch hosts, containers, etc.).
+# .zshrc prefers system-wide atuin and only uses ~/.atuin when no package exists,
+# so a leftover home install will not shadow /usr/bin/atuin.
 install_atuin() {
-    if command -v atuin &>/dev/null; then
-        print_success "atuin already installed: $(atuin --version)"
+    # Prefer an already-available system binary over a home install.
+    local atuin_bin=
+    for c in /usr/bin/atuin /bin/atuin /usr/local/bin/atuin; do
+        if [[ -x $c ]]; then
+            atuin_bin=$c
+            break
+        fi
+    done
+    if [[ -z $atuin_bin ]] && command -v atuin &>/dev/null; then
+        atuin_bin=$(command -v atuin)
+    elif [[ -z $atuin_bin && -x $HOME/.atuin/bin/atuin ]]; then
+        atuin_bin=$HOME/.atuin/bin/atuin
+    fi
+    if [[ -n $atuin_bin ]]; then
+        print_success "atuin already installed: $($atuin_bin --version) ($atuin_bin)"
         return
     fi
 
-    print_info "Installing atuin (shell history)..."
+    print_info "Installing atuin from the package manager (preferred)..."
+    if command -v paru &>/dev/null; then
+        if paru -S --needed atuin; then
+            print_success "atuin installed (package)"
+            return
+        fi
+    elif command -v pacman &>/dev/null; then
+        if sudo pacman -S --needed atuin; then
+            print_success "atuin installed (package)"
+            return
+        fi
+    fi
+
+    print_info "No package available — installing atuin into ~/.atuin via setup.atuin.sh..."
     if curl --proto '=https' --tlsv1.2 -LsSf https://setup.atuin.sh | sh; then
-        print_success "atuin installed"
+        print_success "atuin installed to ~/.atuin/bin"
         print_info "Run 'atuin register' to set up sync, or 'atuin import auto' to import existing history"
     else
-        print_warning "atuin installation failed — install manually from https://atuin.sh"
+        print_warning "atuin installation failed — install a distro package or see https://docs.atuin.sh"
     fi
 }
 
