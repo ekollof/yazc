@@ -185,6 +185,16 @@ zinit light hlissner/zsh-autopair
 # ambient COLORTERM, which is often truecolor even inside dtterm.
 if _term_has_256color; then
   zinit light jeffreytse/zsh-vi-mode
+
+  # FreeBSD libc ERE rejects the single-quoted pattern used upstream:
+  #   [[ $old_style =~ '\e\][0-9]+;.+\a' ]]
+  # with "failed to compile regex: trailing backslash (\)" — and that check
+  # runs on every Enter when restoring the default cursor. Rewrite the
+  # in-memory function to use ANSI-C quoting (real ESC/BEL bytes in the ERE).
+  # https://github.com/jeffreytse/zsh-vi-mode (zvm_cursor_style)
+  if [[ ${functions[zvm_cursor_style]} == *"=~ '\\e\\][0-9]+;.+\\a'"* ]]; then
+    functions[zvm_cursor_style]=${functions[zvm_cursor_style]/"=~ '\\e\\][0-9]+;.+\\a'"/"=~ \$'\\e][0-9]+;.+\\a'"}
+  fi
 fi
 
 # Additional completions
