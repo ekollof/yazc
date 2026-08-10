@@ -235,10 +235,21 @@ if [[ -e "$HOME/.keychain/$HOST-sh" ]]; then
   # Propagate keychain's SSH_AUTH_SOCK into the systemd user environment and
   # dbus activation environment so all subsequently launched processes
   # (including those not started from this shell) use the correct agent socket.
-  if [[ -n "$SSH_AUTH_SOCK" ]] && command -v systemctl > /dev/null 2>&1; then
+  # systemctl --user needs a running systemd user manager, which only exists
+  # on systemd-based Linux sessions — not on *BSD, not on Linux without
+  # systemd, not before pam_systemd has set up the session (its runtime dir).
+  if [[ -n "$SSH_AUTH_SOCK" ]] && command -v systemctl > /dev/null 2>&1 \
+    && [[ -d "${XDG_RUNTIME_DIR:-/run/user/$UID}/systemd" ]]; then
     systemctl --user set-environment SSH_AUTH_SOCK="$SSH_AUTH_SOCK"
   fi
   if [[ -n "$SSH_AUTH_SOCK" ]] && command -v dbus-update-activation-environment > /dev/null 2>&1; then
-    dbus-update-activation-environment SSH_AUTH_SOCK="$SSH_AUTH_SOCK"
+    # Only call it when a session bus is actually reachable — otherwise it
+    # tries to autolaunch dbus-daemon, which fails on headless sessions
+    # (e.g. SSH to FreeBSD: "Unable to autolaunch a dbus-daemon without a
+    # $DISPLAY for X11"). The user-bus socket check covers systemd SSH
+    # sessions where DBUS_SESSION_BUS_ADDRESS is not yet set.
+    if [[ -n "$DBUS_SESSION_BUS_ADDRESS" || -S "${XDG_RUNTIME_DIR:-/run/user/$UID}/bus" ]]; then
+      dbus-update-activation-environment SSH_AUTH_SOCK="$SSH_AUTH_SOCK"
+    fi
   fi
 fi
