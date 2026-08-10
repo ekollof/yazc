@@ -219,8 +219,15 @@ if command -v keychain > /dev/null 2>&1; then
     [[ "$key" != *.pub ]] && SSH_KEYS+=("$key")
   done
 
-  # --immediate: skip "Press Enter to initialize keys" coordination prompt
-  [[ ${#SSH_KEYS[@]} -gt 0 ]] && keychain -q --immediate "${SSH_KEYS[@]}"
+  # --immediate: skip "Press Enter to initialize keys" coordination prompt.
+  # Older keychain (e.g. 2.8.x on OpenBSD) lacks the option, and 3.x doesn't
+  # mention action options in --help, so probe by parsing options only:
+  # unknown options exit 1 before keychain does anything; --version exits 0.
+  if [[ ${#SSH_KEYS[@]} -gt 0 ]]; then
+    local -a _kc_args=(-q)
+    keychain --immediate --version >/dev/null 2>&1 && _kc_args+=(--immediate)
+    keychain "${_kc_args[@]}" "${SSH_KEYS[@]}"
+  fi
 fi
 
 if [[ -e "$HOME/.keychain/$HOST-sh" ]]; then
