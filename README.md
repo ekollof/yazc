@@ -260,8 +260,17 @@ inside CDE dtterm). Fancy features degrade gracefully:
 | zsh-vi-mode | 256-color | not loaded (no leaked `q` from DECSCUSR) |
 | wallust sequences | truecolor | skipped |
 
+**SSH / truecolor:** OpenSSH only forwards `TERM` by default — `COLORTERM` is
+usually empty on the remote even when the client is kitty, cosmic-term, or
+alacritty. `_term_has_truecolor` therefore also accepts known truecolor `TERM`
+names, direct-color terminfo (`colors ≥ 2²⁴`), and 256-color non-legacy
+sessions that already have `SSH_CONNECTION` / `SSH_CLIENT` / `SSH_TTY`. When
+truecolor is inferred without `COLORTERM`, yazc exports `COLORTERM=truecolor`
+so child tools see the same capability as a local session.
+
 Tested with:
 - kitty (with SSH kitten support)
+- cosmic-term / xterm-256color over SSH
 - xterm / xterm-256color
 - rxvt/urxvt
 - termite

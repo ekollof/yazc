@@ -41,12 +41,47 @@ _term_has_256color() {
   (( ncolors >= 256 ))
 }
 
-# Truecolor only when the emulator itself claims it *and* is not legacy.
-# Do not trust COLORTERM alone — it is often inherited from the session.
+# Truecolor when the emulator can actually render 24-bit SGR *and* is not
+# legacy. COLORTERM alone is not enough (session managers often export
+# COLORTERM=truecolor even inside CDE dtterm), but neither is requiring it:
+# OpenSSH only forwards TERM by default, so COLORTERM is empty over SSH even
+# when the client terminal is kitty/cosmic-term/alacritty/….
 _term_has_truecolor() {
   _term_has_256color || return 1
-  [[ "$COLORTERM" == (truecolor|24bit) ]]
+
+  # Explicit advertisement (common in local GUI sessions).
+  [[ "$COLORTERM" == (truecolor|24bit) ]] && return 0
+
+  # Direct-color terminfo entries (e.g. xterm-direct → colors#16777216).
+  local ncolors=${terminfo[colors]:--1}
+  if (( ncolors < 0 )); then
+    ncolors=$(tput colors 2>/dev/null) || ncolors=-1
+  fi
+  (( ncolors >= 16777216 )) && return 0
+
+  # Emulators whose TERM name implies truecolor (what SSH actually forwards).
+  case ${TERM:-} in
+    (*kitty*|*alacritty*|*wezterm*|*foot*|*ghostty*|*contour* \
+    |*direct*|*truecolor*|vscode)
+      return 0
+      ;;
+  esac
+
+  # Over SSH, COLORTERM is almost never AcceptEnv'd. If we already passed the
+  # 256-color + non-legacy gates, trust the client — truecolor SGR is ignored
+  # or approximated on the rare 256-only emulator, and is required for starship
+  # themes to load instead of falling back to the 8-color zsh-prompt.
+  [[ -n ${SSH_CONNECTION:-}${SSH_CLIENT:-}${SSH_TTY:-} ]] && return 0
+
+  return 1
 }
+
+# When truecolor is inferred without COLORTERM (typical over SSH — OpenSSH
+# only forwards TERM), export it so child tools that only check COLORTERM
+# (starship, bat, lazygit, …) behave the same as a local session.
+if [[ -z "$COLORTERM" ]] && _term_has_truecolor; then
+  export COLORTERM=truecolor
+fi
 
 HISTSIZE=100000
 SAVEHIST=100000
