@@ -103,9 +103,20 @@ if [[ ! -e ~/.noauto && -z "$SSH_TTY" ]] && _term_has_truecolor; then
   fi
 fi
 
-# fortune — interactive shells only, skip over SSH to avoid cluttering scp/rsync
+# fortune — interactive shells only, skip over SSH to avoid cluttering scp/rsync.
+# OpenBSD (and FreeBSD) install fortune under /usr/games, which is often not on PATH.
 if [[ -o interactive && -z "$SSH_TTY" ]]; then
-  command -v fortune > /dev/null 2>&1 && fortune -o
+  () {
+    local fortune_cmd
+    if (( $+commands[fortune] )); then
+      fortune_cmd=$commands[fortune]
+    elif [[ -x /usr/games/fortune ]]; then
+      fortune_cmd=/usr/games/fortune
+    else
+      return
+    fi
+    "$fortune_cmd" -o
+  }
 fi
 
 case $TERM in
