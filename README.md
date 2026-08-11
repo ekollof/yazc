@@ -88,7 +88,7 @@ Requires [fzf](https://github.com/junegunn/fzf) to be installed.
 
 **Optional tools for enhanced previews:**
 - `bat` - Syntax highlighting in file previews
-- `eza` - Modern `ls` replacement for directory previews
+- `eza` / `exa` - Modern `ls` replacement (aliases `ls` on all platforms when installed; also used for directory previews)
 - `fd` - Fast file finder (replaces `find`)
 - `rg` (ripgrep) - Fast content search
 
@@ -212,7 +212,7 @@ exec zsh
 **Optional (Enhanced Features):**
 - fzf - Fuzzy finder integration
 - bat - Syntax highlighting in file previews
-- eza - Modern `ls` replacement for directory previews
+- eza / exa - Modern `ls` replacement (aliased to `ls` when installed; also directory previews)
 - fd - Fast file finder (replaces `find`)
 - ripgrep - Fast text search
 - starship - Modern prompt

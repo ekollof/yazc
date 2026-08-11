@@ -436,4 +436,37 @@ _fzf-tab-apply() {
 }
 source "$ZDOTDIR/zsh-local"
 
+# ---------------------------------------------------------------------------
+# ls → eza/exa when installed (all platforms)
+#
+# Prefer the modern listing tool whenever it is on PATH. Do not gate on
+# COLORTERM: OpenSSH rarely forwards it, and FreeBSD/OpenBSD sessions often
+# have eza installed while still lacking COLORTERM. Personal ~/bin/aliases.sh
+# may set a weaker ls alias first; re-apply here so yazc wins after zsh-local.
+# ---------------------------------------------------------------------------
+() {
+  if (( $+commands[eza] )); then
+    export EZA_ICONS_AUTO="${EZA_ICONS_AUTO:-yes}"
+    alias ls=eza
+  elif (( $+commands[exa] )); then
+    alias ls=exa
+  else
+    case ${OSTYPE:-$(uname -s)} in
+      openbsd*|OpenBSD)
+        if (( $+commands[colorls] )); then
+          alias ls='colorls -G'
+        else
+          alias ls='ls -G'
+        fi
+        ;;
+      freebsd*|FreeBSD|darwin*|Darwin|netbsd*|NetBSD|dragonfly*|DragonFly)
+        alias ls='ls -G'
+        ;;
+      *)
+        # GNU coreutils (Linux, and most other non-BSD unames)
+        alias ls='ls --color=auto'
+        ;;
+    esac
+  fi
+}
 
