@@ -134,10 +134,28 @@ bindkey "^N" down-line-or-beginning-search
 # Colors
 autoload -Uz colors && colors
 
-# bat as MANPAGER (syntax-highlighted man pages) and LESSOPEN pipe
-if command -v bat > /dev/null 2>&1; then
-  export MANPAGER='sh -c "col -bx | bat -l man -p"'
-  export MANROFFOPT='-c'
+# bat as man highlighter and LESSOPEN pipe.
+# Do not set MANPAGER to: sh -c "col -bx | bat ..."
+# mandoc (OpenBSD, some Linux) word-splits that value and execs it as
+#   sh -c col -bx | bat ...
+# so sh's $0 becomes -bx and the leftover quote errors as:
+#   -bx: -c: line 1: unexpected EOF while looking for matching `"'
+# A wrapper is portable: man-db (Linux), mandoc (OpenBSD), FreeBSD man.
+# The pipeline itself is POSIX sh (OpenBSD ksh / FreeBSD ash / dash).
+if command -v bat >/dev/null 2>&1; then
+  man() {
+    # Piped/captured `man` must stay plain text (no pager, no bat).
+    if [ ! -t 1 ]; then
+      command man "$@"
+      return
+    fi
+    # MANPAGER=cat: man-db. PAGER=cat: mandoc / BSD. Both skip the system pager.
+    # MANWIDTH: man sees a pipe, so without this it formats to ~80 columns.
+    MANWIDTH="${MANWIDTH:-$(tput cols 2>/dev/null || echo 80)}" \
+      MANPAGER=cat PAGER=cat command man "$@" |
+      col -b |
+      bat -l man -p
+  }
   export LESSOPEN='|bat --color=always --style=plain %s'
   export LESS='-R'
 fi
