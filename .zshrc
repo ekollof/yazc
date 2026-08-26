@@ -47,6 +47,22 @@ if [[ -n $_atuin_cmd ]]; then
   export ATUIN_NOBIND="true"
   eval "$("$_atuin_cmd" init zsh)"
 
+  # atuin init prepends an "atuin" autosuggest strategy that shells out
+  # (and talks to the daemon) on every keystroke. That can block on a
+  # sqlite/daemon lock while `history end` is still running.
+  ZSH_AUTOSUGGEST_STRATEGY=(history)
+
+  # `history end` is launched with `&`, so zsh tracks it as a job. Disown
+  # so a slow write cannot intercept ^D / CHECK_JOBS.
+  # functions[] pretty-prints as `2>&1 &\n)` rather than `2>&1 &)`, and
+  # canonicalises `&!` to `&|` after the assignment.
+  if (( $+functions[_atuin_precmd] )) && [[ ${functions[_atuin_precmd]} != *'&|'* && ${functions[_atuin_precmd]} != *'&!'* ]]; then
+    functions[_atuin_precmd]="${functions[_atuin_precmd]//2>&1 &/2>&1 &!}"
+  fi
+  if (( $+functions[_atuin_zshaddhistory] )) && [[ ${functions[_atuin_zshaddhistory]} != *'&|'* && ${functions[_atuin_zshaddhistory]} != *'&!'* ]]; then
+    functions[_atuin_zshaddhistory]="${functions[_atuin_zshaddhistory]//2>&1 &/2>&1 &!}"
+  fi
+
   # Bind atuin search manually.
   # Use the vi-mode-aware widgets when zsh-vi-mode is active; otherwise use the
   # plain emacs-style widgets that atuin registers unconditionally.
@@ -64,14 +80,34 @@ if [[ -n $_atuin_cmd ]]; then
     bindkey '^p'    atuin-up-search   # Ctrl-P (vi-mode safe alternative)
   }
 
-  if (( ${+functions[zvm_after_init_commands]} )); then
-    # zsh-vi-mode is present — defer binding until after it finishes
+  # zvm_after_init_commands is an array, not a function.
+  if (( ${+zvm_after_init_commands} )); then
     zvm_after_init_commands+=(_atuin_bind)
   else
     _atuin_bind
   fi
 fi
 unset _atuin_cmd _c
+
+# viins default for ^D is list-choices. With fzf-tab + carapace that can
+# stall for a long time on an empty line (looks like a hang). Use emacs
+# EOF behaviour: delete a char, or exit the shell on an empty buffer.
+_bind_ctrl_d_eof() {
+  bindkey '^D' delete-char-or-list
+  bindkey -M emacs '^D' delete-char-or-list 2>/dev/null
+  bindkey -M viins '^D' delete-char-or-list 2>/dev/null
+  bindkey -M vicmd '^D' delete-char-or-list 2>/dev/null
+  if (( $+functions[zvm_bindkey] )); then
+    zvm_bindkey emacs '^D' delete-char-or-list
+    zvm_bindkey viins '^D' delete-char-or-list
+    zvm_bindkey vicmd '^D' delete-char-or-list
+  fi
+}
+if (( ${+zvm_after_init_commands} )); then
+  zvm_after_init_commands+=(_bind_ctrl_d_eof)
+else
+  _bind_ctrl_d_eof
+fi
 
 # >>> grok installer >>>
 export PATH="$HOME/.grok/bin:$PATH"

@@ -99,6 +99,10 @@ setopt hist_find_no_dups
 # some useful options (man zshoptions)
 setopt autocd extendedglob nomatch menucomplete
 setopt interactive_comments
+# Warn on stopped jobs (Ctrl-Z) before exit, but not on short-lived
+# background helpers (atuin history end, wallust). Those would make the
+# first ^D refuse to leave and look like a hang.
+unsetopt check_running_jobs
 stty stop undef		# Disable ctrl-s to freeze terminal.
 zle_highlight=('paste:none')
 

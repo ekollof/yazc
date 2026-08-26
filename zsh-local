@@ -59,6 +59,15 @@ if [[ -n "$KITTY_PID" && "$KITTY_WINDOW_ID" == <-> ]]; then
   if command -v rg > /dev/null 2>&1; then
     alias rg='kitten hyperlinked_grep'
   fi
+
+  # Atuin's TUI (crossterm) enables Kitty's keyboard protocol and
+  # sometimes fails to pop it. Ctrl-D then arrives as CSI u instead of
+  # EOF, so the shell looks wedged until the window is killed.
+  _reset_kitty_keyboard() {
+    printf '\e[<u' > /dev/tty 2>/dev/null
+  }
+  autoload -Uz add-zsh-hook
+  add-zsh-hook precmd _reset_kitty_keyboard
 fi
 
 reload_gtk() {
@@ -95,7 +104,7 @@ if [[ ! -e ~/.noauto && -z "$SSH_TTY" ]] && _term_has_truecolor; then
       command mkdir -p "${_wstamp:h}"
       # Re-generate theme only when wallpaper changes
       if [[ ! -f $_wstamp || ~/.wallpaper -nt $_wstamp ]]; then
-        (wallust run -u -q "$(<~/.wallpaper)" && touch "$_wstamp" &)
+        (wallust run -u -q "$(<~/.wallpaper)" && touch "$_wstamp") &!
       fi
       # Always replay colour sequences into every new terminal window
       [[ -f $_wseq ]] && command cat "$_wseq"
