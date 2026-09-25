@@ -1,10 +1,25 @@
 # All other misc crap goes here.
 
-# Preferred editor for local and remote sessions
-export EDITOR=nvim
+# Preferred editor for local and remote sessions.
+# Inside Emacs (vterm) or EXWM: never nvim / full GUI — use client wrappers.
+if [[ -n "$INSIDE_EMACS" || -n "$INSIDE_EXWM" || "${DESKTOP_SESSION:l}" == "exwm" || "${XDG_CURRENT_DESKTOP:l}" == *exwm* ]]; then
+  if [[ -r "$HOME/.config/emacs/scripts/vterm-init.sh" ]]; then
+    # Provides e/ec, emacs() guard, and EDITOR/VISUAL overrides
+    # shellcheck disable=SC1091
+    source "$HOME/.config/emacs/scripts/vterm-init.sh"
+  else
+    export EDITOR="${HOME}/bin/e"
+    export VISUAL="emacsclient -a ''"
+  fi
+else
+  export EDITOR=nvim
+fi
 
 # Keep unique PATH entries (mirror of zshrc — catches everything added below)
 typeset -U path PATH
+
+# Go (exported before use: $GOPATH/bin below must not expand to a bare /bin)
+export GOPATH=$HOME/go
 
 # PATH additions — use array form so typeset -U deduplicates automatically
 path=(
@@ -18,8 +33,13 @@ path=(
   $path
 )
 
-# Go
-export GOPATH=$HOME/go
+# A dev-linked checkout must stay first: the session puts $OMARCHY_PATH/bin
+# ahead of /usr/bin, and prepending user dirs above would demote it so bare
+# `omarchy` resolves to the packaged copy (which refuses to run when
+# OMARCHY_PATH points at a checkout).
+if [[ -n ${OMARCHY_PATH:-} && $OMARCHY_PATH != /usr/share/omarchy ]]; then
+  path=(${OMARCHY_PATH%/}/bin $path)
+fi
 
 # Gem
 if command -v ruby > /dev/null 2>&1; then
@@ -201,14 +221,33 @@ if command -v zoxide > /dev/null 2>&1; then
   }
 fi
 
-if command -v keychain > /dev/null 2>&1; then
-  # Store/retrieve SSH key passphrases in KWallet via ksshaskpass.
-  # (Also set session-wide in ~/.config/environment.d/ssh_askpass.conf.)
-  if [[ -x /usr/bin/ksshaskpass ]]; then
-    export SSH_ASKPASS=/usr/bin/ksshaskpass
-    export SSH_ASKPASS_REQUIRE=prefer
-    export GIT_ASKPASS=/usr/bin/ksshaskpass
+# Store/retrieve git credential prompts via ksshaskpass when available.
+# (Also set session-wide in ~/.config/environment.d/ssh_askpass.conf.)
+if [[ -x /usr/bin/ksshaskpass ]]; then
+  export SSH_ASKPASS=/usr/bin/ksshaskpass
+  export SSH_ASKPASS_REQUIRE=prefer
+  export GIT_ASKPASS=/usr/bin/ksshaskpass
+fi
+
+if [[ -S "${XDG_RUNTIME_DIR:-/run/user/$UID}/gcr/ssh" ]]; then
+  # gcr-ssh-agent (systemd --user socket) preloads keys from ~/.ssh and
+  # stores unlock passphrases in the login keyring. PAM unlocks the keyring
+  # with the login password at login, so keys work with no prompting.
+  export SSH_AUTH_SOCK="${XDG_RUNTIME_DIR:-/run/user/$UID}/gcr/ssh"
+  unset SSH_AGENT_PID
+  # Propagate into the systemd user and dbus activation environments so
+  # processes not started from this shell use the correct agent socket too.
+  if command -v systemctl > /dev/null 2>&1 \
+    && [[ -d "${XDG_RUNTIME_DIR:-/run/user/$UID}/systemd" ]]; then
+    systemctl --user set-environment SSH_AUTH_SOCK="$SSH_AUTH_SOCK"
   fi
+  if command -v dbus-update-activation-environment > /dev/null 2>&1; then
+    if [[ -n "$DBUS_SESSION_BUS_ADDRESS" || -S "${XDG_RUNTIME_DIR:-/run/user/$UID}/bus" ]]; then
+      dbus-update-activation-environment SSH_AUTH_SOCK="$SSH_AUTH_SOCK"
+    fi
+  fi
+elif command -v keychain > /dev/null 2>&1; then
+  # Fallback for hosts without gcr-ssh-agent: funtoo keychain.
 
   # Drop stale agent env left over from a previous login (socket file can
   # outlive the process → "Error connecting to agent: Connection refused").
@@ -249,28 +288,28 @@ if command -v keychain > /dev/null 2>&1; then
     keychain --immediate --version >/dev/null 2>&1 && _kc_args+=(--immediate)
     keychain "${_kc_args[@]}" "${SSH_KEYS[@]}"
   fi
-fi
 
-if [[ -e "$HOME/.keychain/$HOST-sh" ]]; then
-  source "$HOME/.keychain/$HOST-sh"
-  # Propagate keychain's SSH_AUTH_SOCK into the systemd user environment and
-  # dbus activation environment so all subsequently launched processes
-  # (including those not started from this shell) use the correct agent socket.
-  # systemctl --user needs a running systemd user manager, which only exists
-  # on systemd-based Linux sessions — not on *BSD, not on Linux without
-  # systemd, not before pam_systemd has set up the session (its runtime dir).
-  if [[ -n "$SSH_AUTH_SOCK" ]] && command -v systemctl > /dev/null 2>&1 \
-    && [[ -d "${XDG_RUNTIME_DIR:-/run/user/$UID}/systemd" ]]; then
-    systemctl --user set-environment SSH_AUTH_SOCK="$SSH_AUTH_SOCK"
-  fi
-  if [[ -n "$SSH_AUTH_SOCK" ]] && command -v dbus-update-activation-environment > /dev/null 2>&1; then
-    # Only call it when a session bus is actually reachable — otherwise it
-    # tries to autolaunch dbus-daemon, which fails on headless sessions
-    # (e.g. SSH to FreeBSD: "Unable to autolaunch a dbus-daemon without a
-    # $DISPLAY for X11"). The user-bus socket check covers systemd SSH
-    # sessions where DBUS_SESSION_BUS_ADDRESS is not yet set.
-    if [[ -n "$DBUS_SESSION_BUS_ADDRESS" || -S "${XDG_RUNTIME_DIR:-/run/user/$UID}/bus" ]]; then
-      dbus-update-activation-environment SSH_AUTH_SOCK="$SSH_AUTH_SOCK"
+  if [[ -e "$HOME/.keychain/$HOST-sh" ]]; then
+    source "$HOME/.keychain/$HOST-sh"
+    # Propagate keychain's SSH_AUTH_SOCK into the systemd user environment and
+    # dbus activation environment so all subsequently launched processes
+    # (including those not started from this shell) use the correct agent socket.
+    # systemctl --user needs a running systemd user manager, which only exists
+    # on systemd-based Linux sessions — not on *BSD, not on Linux without
+    # systemd, not before pam_systemd has set up the session (its runtime dir).
+    if [[ -n "$SSH_AUTH_SOCK" ]] && command -v systemctl > /dev/null 2>&1 \
+      && [[ -d "${XDG_RUNTIME_DIR:-/run/user/$UID}/systemd" ]]; then
+      systemctl --user set-environment SSH_AUTH_SOCK="$SSH_AUTH_SOCK"
+    fi
+    if [[ -n "$SSH_AUTH_SOCK" ]] && command -v dbus-update-activation-environment > /dev/null 2>&1; then
+      # Only call it when a session bus is actually reachable — otherwise it
+      # tries to autolaunch dbus-daemon, which fails on headless sessions
+      # (e.g. SSH to FreeBSD: "Unable to autolaunch a dbus-daemon without a
+      # $DISPLAY for X11"). The user-bus socket check covers systemd SSH
+      # sessions where DBUS_SESSION_BUS_ADDRESS is not yet set.
+      if [[ -n "$DBUS_SESSION_BUS_ADDRESS" || -S "${XDG_RUNTIME_DIR:-/run/user/$UID}/bus" ]]; then
+        dbus-update-activation-environment SSH_AUTH_SOCK="$SSH_AUTH_SOCK"
+      fi
     fi
   fi
 fi

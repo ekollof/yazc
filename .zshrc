@@ -114,3 +114,6 @@ export PATH="$HOME/.grok/bin:$PATH"
 fpath=(~/.grok/completions/zsh $fpath)
 autoload -Uz compinit && compinit -C
 # <<< grok installer <<<
+
+# Added by ProtonUp-Qt on 19-08-2026 23:30:11
+if [ -d "/home/andrath/stl/prefix" ]; then export PATH="$PATH:/home/andrath/stl/prefix"; fi
