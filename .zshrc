@@ -117,3 +117,7 @@ autoload -Uz compinit && compinit -C
 
 # Added by ProtonUp-Qt on 19-08-2026 23:30:11
 if [ -d "/home/andrath/stl/prefix" ]; then export PATH="$PATH:/home/andrath/stl/prefix"; fi
+
+# omakit completion
+fpath+=~/.zfunc
+autoload -Uz compinit && compinit
