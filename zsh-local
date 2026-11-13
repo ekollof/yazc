@@ -29,7 +29,7 @@ path=(
   ~/.cargo/bin
   ~/node_modules/.bin
   $GOPATH/bin
-  /home/ekollof/.opencode/bin  # kept here for clarity; .zshrc also adds it
+  $HOME/.opencode/bin  # kept here for clarity; .zshrc also adds it
   $path
 )
 
@@ -41,11 +41,15 @@ if [[ -n ${OMARCHY_PATH:-} && $OMARCHY_PATH != /usr/share/omarchy ]]; then
   path=(${OMARCHY_PATH%/}/bin $path)
 fi
 
-# Gem
-if command -v ruby > /dev/null 2>&1; then
-  GEM_USER_DIR=$(ruby -e 'puts Gem.user_dir' 2>/dev/null)
-  [[ -n "$GEM_USER_DIR" ]] && path+=("$GEM_USER_DIR/bin")
-fi
+# Gem user binaries. Glob the versioned directories instead of starting Ruby
+# on every shell (Gem.user_dir spawns the interpreter, and the directory may
+# not even exist). Covers the distro default and the older ~/.gem layout, and
+# honours GEM_HOME when set.
+[[ -n ${GEM_HOME:-} ]] && path+=("$GEM_HOME/bin")
+for _gemdir in "$HOME"/.local/share/gem/ruby/*/bin(N/) "$HOME"/.gem/ruby/*/bin(N/); do
+  path+=("$_gemdir")
+done
+unset _gemdir
 
 if [[ -e ~/bin/aliases.sh ]]; then
   source ~/bin/aliases.sh
@@ -113,22 +117,62 @@ if [[ -v XTERM_VERSION ]]; then
   fi
 fi
 
-# Apply wallust colour theme (local sessions only, skip over SSH).
+# Apply the terminal palette (local sessions only, skip over SSH).
+#
+# Omarchy is authoritative when it is running: its theme files already colour
+# the terminal, and `omarchy-theme-osc` replays that same palette into windows
+# that opened before a theme change (foot and tmux get the same treatment).
+# Running wallust here on top of it would override the active Omarchy theme
+# with a palette of its own, leaving the shell on colours Omarchy never chose.
+# Only a session without Omarchy (another distro, a plain SSH host, a TTY)
+# falls back to wallust and then to pywal's cached sequences.
+#
 # Sequences are truecolor OSC 4/11 palette sets — skip on legacy terminals
 # (dtterm, vt*, …) that cannot apply them and may emit garbage instead.
+
+# Print the active Omarchy palette as OSC sequences. Returns non-zero when
+# Omarchy is absent or has never applied a theme, so callers can fall back.
+_omarchy_terminal_palette() {
+  local osc=
+  if (( $+commands[omarchy-theme-osc] )); then
+    osc=$commands[omarchy-theme-osc]
+  elif [[ -n ${OMARCHY_PATH:-} && -x ${OMARCHY_PATH%/}/bin/omarchy-theme-osc ]]; then
+    osc=${OMARCHY_PATH%/}/bin/omarchy-theme-osc
+  elif [[ -x /usr/share/omarchy/bin/omarchy-theme-osc ]]; then
+    osc=/usr/share/omarchy/bin/omarchy-theme-osc
+  else
+    return 1
+  fi
+
+  local colors="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/current/theme/colors.toml"
+  [[ -r $colors ]] || return 1
+
+  "$osc" "$colors"
+}
+
 if [[ ! -e ~/.noauto && -z "$SSH_TTY" ]] && _term_has_truecolor; then
-  if command -v wallust > /dev/null 2>&1 && [[ -f ~/.wallpaper ]]; then
-    () {
-      local _wseq="${XDG_CACHE_HOME:-$HOME/.cache}/wallust/sequences"
-      local _wstamp="${XDG_CACHE_HOME:-$HOME/.cache}/wallust/applied.stamp"
-      command mkdir -p "${_wstamp:h}"
-      # Re-generate theme only when wallpaper changes
-      if [[ ! -f $_wstamp || ~/.wallpaper -nt $_wstamp ]]; then
-        (wallust run -u -q "$(<~/.wallpaper)" && touch "$_wstamp") &!
-      fi
-      # Always replay colour sequences into every new terminal window
-      [[ -f $_wseq ]] && command cat "$_wseq"
-    }
+  if ! _omarchy_terminal_palette; then
+    if command -v wallust > /dev/null 2>&1 && [[ -f ~/.wallpaper ]]; then
+      () {
+        local _wseq="${XDG_CACHE_HOME:-$HOME/.cache}/wallust/sequences"
+        local _wstamp="${XDG_CACHE_HOME:-$HOME/.cache}/wallust/applied.stamp"
+        command mkdir -p "${_wstamp:h}"
+        # Re-generate the palette only when the wallpaper changes. A full run
+        # writes the cached sequences for future windows and retints this one
+        # itself, so replaying the old cache here would immediately overwrite
+        # the fresh palette. `-u` would retint only this terminal and never
+        # refresh the cache, leaving new windows on stale colours.
+        if [[ ! -f $_wseq || ! -f $_wstamp || ~/.wallpaper -nt $_wstamp ]]; then
+          (wallust run -q "$(<~/.wallpaper)" && touch "$_wstamp") &!
+        else
+          # Replay the current palette into every new terminal window
+          command cat "$_wseq"
+        fi
+      }
+    elif [[ -f "${XDG_CACHE_HOME:-$HOME/.cache}/wal/sequences" ]]; then
+      # pywal fallback for hosts without wallust.
+      command cat "${XDG_CACHE_HOME:-$HOME/.cache}/wal/sequences"
+    fi
   fi
 fi
 
@@ -150,10 +194,11 @@ if [[ -o interactive && -t 1 && "$TERM" != dumb ]]; then
 fi
 
 case $TERM in
-  (*xterm* | rxvt | rxvt-unicode-256color)
-    # Skip only for real Kitty (shell integration handles titles via OSC).
-    # cosmic-term's KITTY_WINDOW_ID=cosmic-term is graphics advertising only.
-    if [[ -z "$KITTY_PID" || "$KITTY_WINDOW_ID" != <-> ]]; then
+  (*xterm* | rxvt* | screen* | tmux*)
+    # Skip only for real Kitty outside tmux (its shell integration handles
+    # titles via OSC). cosmic-term's KITTY_WINDOW_ID=cosmic-term is graphics
+    # advertising only. Inside tmux the pane title is ours to set.
+    if [[ -z "$KITTY_PID" || "$KITTY_WINDOW_ID" != <-> || -n "$TMUX" ]]; then
       function precmd { print -Pn "\e]0;%(1j,%j job%(2j|s|); ,)%~\a" }
       function preexec { printf "\033]0;%s\a" "$1" }
     fi
@@ -221,95 +266,113 @@ if command -v zoxide > /dev/null 2>&1; then
   }
 fi
 
-# Store/retrieve git credential prompts via ksshaskpass when available.
-# (Also set session-wide in ~/.config/environment.d/ssh_askpass.conf.)
-if [[ -x /usr/bin/ksshaskpass ]]; then
+# Store/retrieve git credential prompts via ksshaskpass when available and a
+# graphical session can show its dialog. Over SSH without a display, leave the
+# normal tty prompt in place (a stale DISPLAY from X11 forwarding would make
+# ssh try ksshaskpass and fail instead of prompting).
+if [[ -x /usr/bin/ksshaskpass && -n ${DISPLAY:-}${WAYLAND_DISPLAY:-} ]]; then
   export SSH_ASKPASS=/usr/bin/ksshaskpass
   export SSH_ASKPASS_REQUIRE=prefer
   export GIT_ASKPASS=/usr/bin/ksshaskpass
 fi
 
-if [[ -S "${XDG_RUNTIME_DIR:-/run/user/$UID}/gcr/ssh" ]]; then
-  # gcr-ssh-agent (systemd --user socket) preloads keys from ~/.ssh and
-  # stores unlock passphrases in the login keyring. PAM unlocks the keyring
-  # with the login password at login, so keys work with no prompting.
-  export SSH_AUTH_SOCK="${XDG_RUNTIME_DIR:-/run/user/$UID}/gcr/ssh"
-  unset SSH_AGENT_PID
-  # Propagate into the systemd user and dbus activation environments so
-  # processes not started from this shell use the correct agent socket too.
-  if command -v systemctl > /dev/null 2>&1 \
-    && [[ -d "${XDG_RUNTIME_DIR:-/run/user/$UID}/systemd" ]]; then
+# SSH agent selection. A working inherited agent is authoritative — notably a
+# forwarded agent (`ssh -A`), which must not be replaced by the local keyring
+# or the forwarded keys disappear. Only start gcr-ssh-agent/keychain when
+# there is no usable agent.
+#
+# Wrapped in an anonymous function so its helper, arrays, and loop variables
+# do not leak into the interactive shell's global scope.
+() {
+  # ssh-add -l exits 0 with keys, 1 for a reachable but empty agent, and 2
+  # when the socket is dead.
+  _ssh_agent_ok() {
+    local rc
+    [[ -n ${SSH_AUTH_SOCK:-} ]] || return 1
+    ssh-add -l &>/dev/null
+    rc=$?
+    (( rc != 2 ))
+  }
+  _ssh_agent_has_keys() {
+    [[ -n ${SSH_AUTH_SOCK:-} ]] || return 1
+    ssh-add -l &>/dev/null
+  }
+
+  # gcr-ssh-agent is socket-activated and has no separate agent PID.
+  if [[ ${SSH_AUTH_SOCK:-} == ${XDG_RUNTIME_DIR:-/run/user/$UID}/gcr/ssh ]]; then
+    unset SSH_AGENT_PID
+  fi
+
+  # In an SSH session, an inherited agent was forwarded by the client: keep
+  # it even when it is empty (`ssh -A` means the client's keys, not ours).
+  # A dead forwarded socket falls through to the local agent below.
+  if [[ -n ${SSH_CONNECTION:-} ]] && _ssh_agent_ok; then
+    return 0
+  fi
+  _ssh_agent_has_keys && return 0
+
+  local started=0
+  if [[ -S ${XDG_RUNTIME_DIR:-/run/user/$UID}/gcr/ssh ]]; then
+    # gcr-ssh-agent (systemd --user socket) preloads keys from ~/.ssh and
+    # stores unlock passphrases in the login keyring. PAM unlocks the keyring
+    # with the login password at login, so keys work with no prompting.
+    export SSH_AUTH_SOCK="${XDG_RUNTIME_DIR:-/run/user/$UID}/gcr/ssh"
+    unset SSH_AGENT_PID
+    started=1
+  elif (( $+commands[keychain] )); then
+    # Fallback for hosts without gcr-ssh-agent: funtoo keychain.
+
+    # Drop stale agent env left over from a previous login (the socket can
+    # outlive the process → "Error connecting to agent: Connection refused").
+    unset SSH_AUTH_SOCK SSH_AGENT_PID
+    rm -f "$HOME/.keychain/$HOST-sh" "$HOME/.keychain/$HOST-csh" "$HOME/.keychain/$HOST-fish" 2>/dev/null
+
+    # Private keys, including symlinked ones (1Password/KeePass/age setups).
+    # (N) is nullglob; -f follows symlinks, so the regular-file-only (.)
+    # qualifier would wrongly skip a key that is a symlink.
+    local -a keys=()
+    local key
+    for key in "$HOME"/.ssh/id_*(N); do
+      [[ $key == *.pub || ! -f $key ]] && continue
+      keys+=("$key")
+    done
+
+    # --immediate: skip "Press Enter to initialize keys" coordination prompt.
+    # Older keychain (e.g. 2.8.x on OpenBSD) lacks the option, and 3.x doesn't
+    # mention action options in --help, so probe by parsing options only:
+    # unknown options exit 1 before keychain does anything; --version exits 0.
+    if (( ${#keys} )); then
+      local -a args=(-q)
+      keychain --immediate --version >/dev/null 2>&1 && args+=(--immediate)
+      keychain "${args[@]}" "${keys[@]}"
+    fi
+    if [[ -e "$HOME/.keychain/$HOST-sh" ]]; then
+      source "$HOME/.keychain/$HOST-sh"
+      started=1
+    fi
+  fi
+
+  (( started )) || return 0
+
+  # This shell selected a local agent, so publish it to the systemd user
+  # manager and dbus activation environment for processes started outside this
+  # shell. Never do this for a forwarded agent: its socket dies with the SSH
+  # connection.
+  #
+  # systemctl --user needs a running systemd user manager — not on *BSD, not on
+  # Linux without systemd, not before pam_systemd has created the runtime dir.
+  if [[ -n ${SSH_AUTH_SOCK:-} ]] && command -v systemctl > /dev/null 2>&1 \
+    && [[ -d ${XDG_RUNTIME_DIR:-/run/user/$UID}/systemd ]]; then
     systemctl --user set-environment SSH_AUTH_SOCK="$SSH_AUTH_SOCK"
   fi
-  if command -v dbus-update-activation-environment > /dev/null 2>&1; then
-    if [[ -n "$DBUS_SESSION_BUS_ADDRESS" || -S "${XDG_RUNTIME_DIR:-/run/user/$UID}/bus" ]]; then
+  if [[ -n ${SSH_AUTH_SOCK:-} ]] && command -v dbus-update-activation-environment > /dev/null 2>&1; then
+    # Only call it when a session bus is actually reachable — otherwise it
+    # tries to autolaunch dbus-daemon, which fails on headless sessions
+    # (e.g. SSH to FreeBSD: "Unable to autolaunch a dbus-daemon without a
+    # $DISPLAY for X11"). The user-bus socket check covers systemd SSH
+    # sessions where DBUS_SESSION_BUS_ADDRESS is not yet set.
+    if [[ -n ${DBUS_SESSION_BUS_ADDRESS:-} || -S ${XDG_RUNTIME_DIR:-/run/user/$UID}/bus ]]; then
       dbus-update-activation-environment SSH_AUTH_SOCK="$SSH_AUTH_SOCK"
     fi
   fi
-elif command -v keychain > /dev/null 2>&1; then
-  # Fallback for hosts without gcr-ssh-agent: funtoo keychain.
-
-  # Drop stale agent env left over from a previous login (socket file can
-  # outlive the process → "Error connecting to agent: Connection refused").
-  # ssh-add exit: 0 = has keys, 1 = no identities (agent OK), 2 = cannot connect
-  local _ssh_add_rc=0
-  if [[ -n "$SSH_AUTH_SOCK" ]]; then
-    ssh-add -l &>/dev/null
-    _ssh_add_rc=$?
-    if (( _ssh_add_rc == 2 )); then
-      unset SSH_AUTH_SOCK SSH_AGENT_PID
-      rm -f "$HOME/.keychain/$HOST-sh" "$HOME/.keychain/$HOST-csh" "$HOME/.keychain/$HOST-fish" 2>/dev/null
-    fi
-  fi
-  if [[ -e "$HOME/.keychain/$HOST-sh" ]]; then
-    source "$HOME/.keychain/$HOST-sh"
-    ssh-add -l &>/dev/null
-    _ssh_add_rc=$?
-    if (( _ssh_add_rc == 2 )); then
-      unset SSH_AUTH_SOCK SSH_AGENT_PID
-      rm -f "$HOME/.keychain/$HOST-sh" "$HOME/.keychain/$HOST-csh" "$HOME/.keychain/$HOST-fish" 2>/dev/null
-    fi
-  fi
-
-  # Find all SSH private keys (exclude .pub, known_hosts, config, etc.).
-  # (N.) = nullglob + regular files only, so accounts with no id_* keys
-  # (agent-only / forwarded agent) do not trip zsh's nomatch error.
-  local -a SSH_KEYS=()
-  for key in "$HOME"/.ssh/id_*(N.); do
-    [[ "$key" != *.pub ]] && SSH_KEYS+=("$key")
-  done
-
-  # --immediate: skip "Press Enter to initialize keys" coordination prompt.
-  # Older keychain (e.g. 2.8.x on OpenBSD) lacks the option, and 3.x doesn't
-  # mention action options in --help, so probe by parsing options only:
-  # unknown options exit 1 before keychain does anything; --version exits 0.
-  if [[ ${#SSH_KEYS[@]} -gt 0 ]]; then
-    local -a _kc_args=(-q)
-    keychain --immediate --version >/dev/null 2>&1 && _kc_args+=(--immediate)
-    keychain "${_kc_args[@]}" "${SSH_KEYS[@]}"
-  fi
-
-  if [[ -e "$HOME/.keychain/$HOST-sh" ]]; then
-    source "$HOME/.keychain/$HOST-sh"
-    # Propagate keychain's SSH_AUTH_SOCK into the systemd user environment and
-    # dbus activation environment so all subsequently launched processes
-    # (including those not started from this shell) use the correct agent socket.
-    # systemctl --user needs a running systemd user manager, which only exists
-    # on systemd-based Linux sessions — not on *BSD, not on Linux without
-    # systemd, not before pam_systemd has set up the session (its runtime dir).
-    if [[ -n "$SSH_AUTH_SOCK" ]] && command -v systemctl > /dev/null 2>&1 \
-      && [[ -d "${XDG_RUNTIME_DIR:-/run/user/$UID}/systemd" ]]; then
-      systemctl --user set-environment SSH_AUTH_SOCK="$SSH_AUTH_SOCK"
-    fi
-    if [[ -n "$SSH_AUTH_SOCK" ]] && command -v dbus-update-activation-environment > /dev/null 2>&1; then
-      # Only call it when a session bus is actually reachable — otherwise it
-      # tries to autolaunch dbus-daemon, which fails on headless sessions
-      # (e.g. SSH to FreeBSD: "Unable to autolaunch a dbus-daemon without a
-      # $DISPLAY for X11"). The user-bus socket check covers systemd SSH
-      # sessions where DBUS_SESSION_BUS_ADDRESS is not yet set.
-      if [[ -n "$DBUS_SESSION_BUS_ADDRESS" || -S "${XDG_RUNTIME_DIR:-/run/user/$UID}/bus" ]]; then
-        dbus-update-activation-environment SSH_AUTH_SOCK="$SSH_AUTH_SOCK"
-      fi
-    fi
-  fi
-fi
+}

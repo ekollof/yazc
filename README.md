@@ -191,8 +191,8 @@ Commands are highlighted as you type:
 ## Performance
 
 ### Fast Startup Optimizations
-- Cached completion dump (regenerates once per 24 hours)
-- Background loading of wallust/fortune
+- Single `compinit` run per shell (dump reused; rewritten only when fpath changes)
+- Omarchy palette replay, with wallust/pywal fallback and fortune loading, in the background
 - Conditional loading of optional tools
 - Efficient plugin management
 
@@ -216,6 +216,7 @@ exec zsh
 - fd - Fast file finder (replaces `find`)
 - ripgrep - Fast text search
 - starship - Modern prompt
+- wallust or pywal - Terminal palette fallback when Omarchy is not running
 - mise - Runtime manager
 - keychain - SSH key management
 - fortune - Random quotes on startup
@@ -258,7 +259,7 @@ inside CDE dtterm). Fancy features degrade gracefully:
 |---------|----------|------------------|
 | starship | truecolor | fallback `zsh-prompt` |
 | zsh-vi-mode | 256-color | not loaded (no leaked `q` from DECSCUSR) |
-| wallust sequences | truecolor | skipped |
+| Omarchy / wallust / pywal sequences | truecolor | skipped |
 
 **SSH / truecolor:** OpenSSH only forwards `TERM` by default — `COLORTERM` is
 usually empty on the remote even when the client is kitty, cosmic-term, or

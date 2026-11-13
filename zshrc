@@ -103,7 +103,10 @@ setopt interactive_comments
 # background helpers (atuin history end, wallust). Those would make the
 # first ^D refuse to leave and look like a hang.
 unsetopt check_running_jobs
-stty stop undef		# Disable ctrl-s to freeze terminal.
+# Disable ctrl-s to freeze terminal. Guard on a real tty: tools that spawn
+# `zsh -i` without a pty would otherwise print an "Inappropriate ioctl"
+# error on every start.
+[[ -t 0 ]] && stty stop undef 2>/dev/null
 zle_highlight=('paste:none')
 
 # beeping is annoying
@@ -133,6 +136,19 @@ bindkey "^N" down-line-or-beginning-search
 
 # Colors
 autoload -Uz colors && colors
+
+# LS_COLORS drives zsh completion colours (and fzf-tab's file tinting).
+# dircolors uses the ANSI palette, so it follows the Omarchy/wallust theme.
+if [[ -z ${LS_COLORS:-} ]] && (( $+commands[dircolors] )); then
+  eval "$(dircolors -b 2>/dev/null)"
+fi
+
+# Let bat follow the terminal palette (Omarchy, wallust, pywal) instead of a
+# fixed colour scheme. bat 0.18+ ships the "ansi" theme; older versions fall
+# back to their default when asked for an unknown theme, so probe the list.
+if (( $+commands[bat] )) && bat --list-themes 2>/dev/null | grep -qx ansi; then
+  export BAT_THEME="${BAT_THEME:-ansi}"
+fi
 
 # bat as man highlighter and LESSOPEN pipe.
 # Do not set MANPAGER to: sh -c "col -bx | bat ..."
@@ -168,7 +184,7 @@ source "$ZDOTDIR/zsh-prompt"
 # Zinit installation and setup
 ZINIT_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}/zinit/zinit.git"
 if [ ! -d "$ZINIT_HOME" ]; then
-   mkdir -p "$(dirname $ZINIT_HOME)"
+   mkdir -p "$(dirname "$ZINIT_HOME")"
    git clone https://github.com/zdharma-continuum/zinit.git "$ZINIT_HOME"
 fi
 source "${ZINIT_HOME}/zinit.zsh"
@@ -303,25 +319,43 @@ bindkey '^e' end-of-line           # Ctrl-E: move to end of line (standard)
 [ -f $ZDOTDIR/completion/_fnm ] && fpath+="$ZDOTDIR/completion/"
 
 # FZF configuration
-export FZF_DEFAULT_COMMAND='rg --hidden --no-ignore-vcs -l ""'
+# Prefer fd. Fall back to rg's file-list mode (not `rg -l ""`, which scans
+# every file's contents just to list names).
+if (( $+commands[fd] )); then
+  export FZF_DEFAULT_COMMAND='fd --type f --hidden --follow --exclude .git'
+elif (( $+commands[rg] )); then
+  export FZF_DEFAULT_COMMAND='rg --files --hidden --no-ignore-vcs'
+fi
 
-# Use fd instead of find if available (overrides rg default above)
-command -v fd > /dev/null 2>&1 && export FZF_DEFAULT_COMMAND='fd --type f --hidden --follow --exclude .git'
+# Clipboard: wl-copy on Wayland, xclip on X11. Only advertise the ctrl-y
+# binding when a supported clipboard tool is actually installed.
+_fzf_clip=
+if [[ -n ${WAYLAND_DISPLAY:-} ]] && (( $+commands[wl-copy] )); then
+  _fzf_clip=wl-copy
+elif [[ -n ${DISPLAY:-} ]] && (( $+commands[xclip] )); then
+  _fzf_clip='xclip -selection clipboard'
+fi
+_fzf_copy_bind=
+[[ -n $_fzf_clip ]] && _fzf_copy_bind="--bind='ctrl-y:execute-silent(printf \"%s\\n\" {+} | ${_fzf_clip})'"
 
+# Colours use the terminal's ANSI palette (0-15), which Omarchy sets from the
+# active theme. Hard-coded hex values would ignore the theme and stay stale
+# after a theme switch.
 export FZF_DEFAULT_OPTS="
   --height=40%
   --layout=reverse
   --border
   --inline-info
   --preview-window=right:50%:wrap
-  --color=fg:#d0d0d0,bg:#121212,hl:#5f87af
-  --color=fg+:#d0d0d0,bg+:#262626,hl+:#5fd7ff
-  --color=info:#afaf87,prompt:#d7005f,pointer:#af5fff
-  --color=marker:#87ff00,spinner:#af5fff,header:#87afaf
+  --color=fg:7,bg:0,hl:4
+  --color=fg+:15,bg+:8,hl+:12
+  --color=info:3,prompt:5,pointer:6
+  --color=marker:2,spinner:5,header:4
   --bind='ctrl-/:toggle-preview'
   --bind='ctrl-a:select-all'
-  --bind='ctrl-y:execute-silent(echo -n {+} | xclip -selection clipboard)'
+  ${_fzf_copy_bind}
 "
+unset _fzf_clip _fzf_copy_bind
 
 # CTRL-T: Paste selected files/dirs — inherits FZF_DEFAULT_COMMAND (set above)
 export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
@@ -337,13 +371,19 @@ export FZF_ALT_C_OPTS="
   --preview-window right:50%:wrap
 "
 
-# Run compinit once after all fpath modifications
-# Use cached dump file (re-generate once per day)
-if [[ -n ${ZDOTDIR}/.zcompdump(#qN.mh+24) ]]; then
-  compinit
-else
-  compinit -C
-fi
+# Completion directories outside the plugin tree must be on fpath before
+# compinit. The grok installer and omakit used to append them after the first
+# compinit, forcing two extra compinit runs per shell (and re-running the
+# security check after fzf-tab had already loaded). Register them here and run
+# compinit once.
+[[ -d $HOME/.grok/completions/zsh ]] && fpath=($HOME/.grok/completions/zsh $fpath)
+[[ -d $ZDOTDIR/.zfunc ]] && fpath+=($ZDOTDIR/.zfunc)
+
+# Run compinit once after all fpath modifications. A full run costs ~10 ms
+# more than -C and, unlike -C, notices a newly added completion directory
+# (e.g. ~/.zfunc or the grok installer's) without waiting for the daily dump
+# refresh. The dump is only rewritten when fpath actually changed.
+compinit
 
 # Load fzf-tab AFTER compinit
 zinit light Aloxaf/fzf-tab
@@ -382,9 +422,11 @@ zstyle ':fzf-tab:complete:*:*' fzf-preview '
     case $mime in
       image/*)
         if command -v chafa > /dev/null 2>&1; then
-          if [[ -n "$KITTY_WINDOW_ID" ]]; then
+          if [[ -n "$KITTY_PID" && "$KITTY_WINDOW_ID" == <-> ]]; then
             # kitty graphics protocol via chafa: writes escape codes directly to
-            # stdout, no /dev/tty handshake needed (works inside fzf preview panes)
+            # stdout, no /dev/tty handshake needed (works inside fzf preview panes).
+            # Require a real Kitty window: cosmic-term advertises
+            # KITTY_WINDOW_ID=cosmic-term only for the graphics protocol handshake.
             chafa -f kitty -s "${FZF_PREVIEW_COLUMNS:-80}x${FZF_PREVIEW_LINES:-24}" --animate=off "$file"
           else
             # Sixel fallback for other terminals (xterm, mlterm, etc.)
@@ -413,49 +455,29 @@ zstyle ':fzf-tab:complete:*:*' fzf-preview '
     echo "$file"
   fi
 '
-# Preview window configuration with kitty protocol support
-zstyle ':fzf-tab:*' fzf-flags --preview-window=right:50%:wrap --height=40%
+# Preview window configuration with kitty protocol support.
+# fzf-tab does not read FZF_DEFAULT_OPTS (use-fzf-default-opts is off), so
+# give its picker the same ANSI palette colours to match the Omarchy theme.
+zstyle ':fzf-tab:*' fzf-flags --preview-window=right:50%:wrap --height=40% \
+  --color=fg:7,bg:0,hl:4 --color=fg+:15,bg+:8,hl+:12 \
+  --color=info:3,prompt:5,pointer:6 --color=marker:2,spinner:5,header:4
 # Switch between groups with < and >
 zstyle ':fzf-tab:*' switch-group '<' '>'
 
 # Syntax highlighting - MUST be loaded last for compatibility
 zinit light zdharma-continuum/fast-syntax-highlighting
 
-# Fix fzf-tab double-escaping spaces in filenames during continuous completion.
-# fzf-tab's C module (fzf-tab-compcap-generate) stores zsh-tokenized words in
-# compcap; when read back in _fzf-tab-apply they are double-escaped (\\ instead
-# of \). Override the function to apply one (Q) unquote before insertion.
-_fzf-tab-apply() {
-  local choice bs=$'\2'
-  for choice in "$_ftb_choices[@]"; do
-    local match=${_ftb_compcap[(r)${(b)choice}$bs*]}
-    if [[ -z $match ]]; then
-      local qchoice=${(q)choice}
-      match=${_ftb_compcap[(r)${(b)qchoice}$bs*]}
-    fi
-    [[ -z $match ]] && continue
-    local -A v=("${(@0)${match#*$bs}}")
-    local -a args=("${(@ps:\1:)v[args]}")
-    [[ -z $args[1] ]] && args=()
-    IPREFIX=${v[IPREFIX]-} PREFIX=${v[PREFIX]-} SUFFIX=${v[SUFFIX]-} ISUFFIX=${v[ISUFFIX]-}
-    local word=$v[word]
-    # The C module (fzf-tab-compcap-generate) stores zsh-tokenized words in
-    # compcap. When read back they are double-escaped (e.g. \\ instead of \).
-    # One (Q) unquote restores the correct single-escape for shell insertion.
-    # We only do this when the word actually contains a backslash to avoid
-    # altering non-file completions.
-    [[ $word == *\\* ]] && word=${(Q)word}
-    builtin compadd "${args[@]:--Q}" -Q -- "$word"
-  done
-
-  compstate[list]=
-  if (( $#_ftb_choices == 1 )); then
-    compstate[insert]='1'
-    [[ $RBUFFER == ' '* ]] || compstate[insert]+=' '
-  elif (( $#_ftb_choices > 1 )); then
-    compstate[insert]='all'
-  fi
-}
+# fzf-tab's _fzf-tab-apply is intentionally NOT overridden here. Doing so
+# used to fix a double-escaping bug in continuous completion, but fzf-tab now
+# stores words with exactly one level of zsh quoting (e.g. "My\ Dir"). The old
+# override ran ${(Q)word} on those already-correct words and handed the result
+# to compadd -Q, so spaces and quotes were inserted unescaped:
+#
+#   mpv Misferlis fljóð - lyric video.mp4     # wrong: three arguments
+#   mpv Misferlis\ fljóð\ -\ lyric\ video.mp4 # correct
+#
+# Leaving the upstream function alone keeps filenames with spaces, quotes, and
+# other special characters quoted, including when continuing into a directory.
 source "$ZDOTDIR/zsh-local"
 
 # ---------------------------------------------------------------------------

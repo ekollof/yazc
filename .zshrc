@@ -111,13 +111,10 @@ fi
 
 # >>> grok installer >>>
 export PATH="$HOME/.grok/bin:$PATH"
-fpath=(~/.grok/completions/zsh $fpath)
-autoload -Uz compinit && compinit -C
+# Completion fpath is registered in zshrc, before the single compinit run.
 # <<< grok installer <<<
 
 # Added by ProtonUp-Qt on 19-08-2026 23:30:11
-if [ -d "/home/andrath/stl/prefix" ]; then export PATH="$PATH:/home/andrath/stl/prefix"; fi
+if [ -d "$HOME/stl/prefix" ]; then export PATH="$PATH:$HOME/stl/prefix"; fi
 
-# omakit completion
-fpath+=~/.zfunc
-autoload -Uz compinit && compinit
+# omakit completion: registered on fpath in zshrc, before compinit.

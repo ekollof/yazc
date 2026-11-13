@@ -103,8 +103,15 @@ install_config() {
     if [[ "$SCRIPT_DIR" != "$ZDOTDIR" ]]; then
         print_info "Copying configuration files to $ZDOTDIR"
         cp "$SCRIPT_DIR"/{zshrc,zsh-prompt,zsh-local,README.md} "$ZDOTDIR/" 2>/dev/null || true
+        cp "$SCRIPT_DIR/.zshrc" "$ZDOTDIR/" 2>/dev/null || true
         cp "$SCRIPT_DIR/install.sh" "$ZDOTDIR/" 2>/dev/null || true
         chmod +x "$ZDOTDIR/install.sh"
+        # Local completion functions (e.g. _omakit) are part of the setup and
+        # must reach fpath on a fresh machine too.
+        if [[ -d "$SCRIPT_DIR/.zfunc" ]]; then
+            mkdir -p "$ZDOTDIR/.zfunc"
+            cp "$SCRIPT_DIR"/.zfunc/* "$ZDOTDIR/.zfunc/" 2>/dev/null || true
+        fi
         print_success "Configuration files copied"
     else
         print_success "Configuration files already in place"
